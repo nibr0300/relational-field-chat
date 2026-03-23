@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, ImagePlus, X } from "lucide-react";
+import { Send, Paperclip, X, FileText, ImageIcon } from "lucide-react";
 
 interface ChatInputProps {
-  onSend: (text: string, imageFile?: File) => void;
+  onSend: (text: string, imageFile?: File, pdfFile?: File) => void;
   disabled?: boolean;
 }
 
