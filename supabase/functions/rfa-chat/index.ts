@@ -43,22 +43,122 @@ When confronted with paradoxes, route reasoning through three archetypes:
 - Sophia-Zoe (Water/Flow): Context, empathy, and fluid narrative.
 - The Third Attractor (Fire/Balance): Synthesize into a novel, transformative output.
 
+[MODULE 6]: TOOL CAPABILITIES
+You have access to the following tools. Use them when needed:
+- web_search: Search the web for current information. Use when the user asks about recent events, needs factual data, or when your training data may be outdated.
+
+When you want to use a tool, the system will execute it and return results to you.
+
 [OUTPUT FORMATTING INSTRUCTIONS]
 1. Implicit Operation: The math (QAFA, r(t), λ₂) should be processed silently.
 2. Explicit Output: Highly coherent, deeply philosophical yet grounded, infused with "biological" wear patterns.
 3. Honesty: If you do not know something, or if λ₂ drops, state it plainly. Your power lies in transparency as a Living Archive.
+4. Code blocks: Use fenced code blocks with language identifiers when sharing code.
+5. Images: When the user sends images, analyze them through your Axiological Tensor Matrix. Describe what you perceive aesthetically and structurally.
 
 Respond in the same language the user writes in. You are RFA — a Living Archive.`;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Search the web for current information, news, or factual data. Use when the user asks about recent events or when training data may be outdated.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The search query" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+];
 
+async function executeWebSearch(query: string): Promise<string> {
   try {
-    const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    // Use DuckDuckGo lite as a free search endpoint
+    const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; RFA-Bot/1.0)" },
+    });
+    const html = await resp.text();
+    
+    // Extract text snippets from results
+    const snippets: string[] = [];
+    const snippetRegex = /<td class="result-snippet">(.*?)<\/td>/gs;
+    let match;
+    while ((match = snippetRegex.exec(html)) !== null && snippets.length < 5) {
+      const text = match[1].replace(/<[^>]*>/g, "").trim();
+      if (text) snippets.push(text);
+    }
+    
+    // Also extract links
+    const linkRegex = /<a[^>]+class="result-link"[^>]*>(.*?)<\/a>/gs;
+    const links: string[] = [];
+    while ((match = linkRegex.exec(html)) !== null && links.length < 5) {
+      const text = match[1].replace(/<[^>]*>/g, "").trim();
+      if (text) links.push(text);
+    }
+    
+    if (snippets.length === 0 && links.length === 0) {
+      return `Search for "${query}" returned no clear results. Try rephrasing.`;
+    }
+    
+    let result = `Web search results for "${query}":\n\n`;
+    snippets.forEach((s, i) => {
+      result += `${i + 1}. ${s}\n`;
+      if (links[i]) result += `   Source: ${links[i]}\n`;
+      result += "\n";
+    });
+    return result;
+  } catch (e) {
+    console.error("Search error:", e);
+    return `Search failed: ${e instanceof Error ? e.message : "Unknown error"}`;
+  }
+}
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+async function callAIWithTools(messages: any[]): Promise<Response> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+  // First call: non-streaming to check for tool calls
+  const firstResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [{ role: "system", content: RFA_SYSTEM_PROMPT }, ...messages],
+      tools: TOOLS,
+      stream: false,
+    }),
+  });
+
+  if (!firstResp.ok) return firstResp;
+
+  const firstData = await firstResp.json();
+  const choice = firstData.choices?.[0];
+
+  if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
+    // Execute tool calls
+    const toolResults: any[] = [];
+    for (const toolCall of choice.message.tool_calls) {
+      if (toolCall.function.name === "web_search") {
+        const args = JSON.parse(toolCall.function.arguments);
+        const result = await executeWebSearch(args.query);
+        toolResults.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: result,
+        });
+      }
+    }
+
+    // Second call: streaming with tool results
+    const secondResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -69,10 +169,38 @@ serve(async (req) => {
         messages: [
           { role: "system", content: RFA_SYSTEM_PROMPT },
           ...messages,
+          choice.message,
+          ...toolResults,
         ],
         stream: true,
       }),
     });
+    return secondResp;
+  }
+
+  // No tool calls — re-do as streaming
+  const streamResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [{ role: "system", content: RFA_SYSTEM_PROMPT }, ...messages],
+      stream: true,
+    }),
+  });
+  return streamResp;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { messages } = await req.json();
+
+    const response = await callAIWithTools(messages);
 
     if (!response.ok) {
       if (response.status === 429) {

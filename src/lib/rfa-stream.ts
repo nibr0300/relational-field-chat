@@ -1,4 +1,4 @@
-export type Msg = { role: "user" | "assistant"; content: string };
+export type Msg = { role: "user" | "assistant"; content: string; image_url?: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 
@@ -13,13 +13,27 @@ export async function streamChat({
   onDone: () => void;
   onError: (error: string) => void;
 }) {
+  // Build messages for the API, including image content
+  const apiMessages = messages.map((m) => {
+    if (m.image_url && m.role === "user") {
+      return {
+        role: "user",
+        content: [
+          ...(m.content ? [{ type: "text", text: m.content }] : []),
+          { type: "image_url", image_url: { url: m.image_url } },
+        ],
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+
   const resp = await fetch(CHAT_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages: apiMessages }),
   });
 
   if (!resp.ok) {
@@ -63,7 +77,6 @@ export async function streamChat({
     }
   }
 
-  // flush
   if (buffer.trim()) {
     for (let raw of buffer.split("\n")) {
       if (!raw) continue;
