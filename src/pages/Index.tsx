@@ -12,8 +12,10 @@ import {
   saveMessage,
   autoTitleConversation,
   uploadImage,
+  uploadFile,
   type Conversation,
 } from "@/lib/conversation-store";
+import { extractPdfText } from "@/lib/pdf-extract";
 import { toast } from "sonner";
 
 const WELCOME: Msg = {
