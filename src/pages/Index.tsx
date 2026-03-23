@@ -78,8 +78,11 @@ export default function Index() {
     }
   }, [activeConvId, refreshConversations]);
 
-  const handleSend = async (text: string, imageFile?: File) => {
+  const handleSend = async (text: string, imageFile?: File, pdfFile?: File) => {
     let imageUrl: string | undefined;
+    let fileUrl: string | undefined;
+    let fileName: string | undefined;
+    let pdfText: string | undefined;
 
     // Upload image if provided
     if (imageFile) {
@@ -91,7 +94,31 @@ export default function Index() {
       }
     }
 
-    const userMsg: Msg = { role: "user", content: text, image_url: imageUrl };
+    // Upload and extract PDF if provided
+    if (pdfFile) {
+      try {
+        fileName = pdfFile.name;
+        const [url, extracted] = await Promise.all([
+          uploadFile(pdfFile),
+          extractPdfText(pdfFile),
+        ]);
+        fileUrl = url;
+        pdfText = extracted;
+      } catch (e) {
+        console.error("PDF error:", e);
+        toast.error("Kunde inte bearbeta PDF-filen");
+        return;
+      }
+    }
+
+    // Build content - include PDF text if available
+    let fullContent = text;
+    if (pdfText) {
+      const prefix = text ? `${text}\n\n` : "";
+      fullContent = `${prefix}[Bifogat dokument: ${fileName}]\n\n${pdfText}`;
+    }
+
+    const userMsg: Msg = { role: "user", content: fullContent, image_url: imageUrl, file_url: fileUrl, file_name: fileName };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
