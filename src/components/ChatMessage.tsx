@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, FileText, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { Msg } from "@/lib/rfa-stream";
 
