@@ -56,6 +56,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
             className="max-w-full max-h-64 rounded-md mb-2 border border-border"
           />
         )}
+        {message.file_url && (
+          <a
+            href={message.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-secondary/80 border border-border rounded-lg px-3 py-2 mb-2 hover:border-primary/30 transition-colors w-fit"
+          >
+            <FileText className="w-5 h-5 text-primary" />
+            <span className="text-xs text-foreground truncate max-w-[200px]">{message.file_name || "Dokument"}</span>
+            <ExternalLink className="w-3 h-3 text-muted-foreground" />
+          </a>
+        )}
         {isUser ? (
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
         ) : (

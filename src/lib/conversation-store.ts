@@ -91,3 +91,14 @@ export async function uploadImage(file: File): Promise<string> {
   const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
   return data.publicUrl;
 }
+
+export async function uploadFile(file: File): Promise<string> {
+  const ext = file.name.split(".").pop() || "pdf";
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("chat-images").upload(path, file, {
+    contentType: file.type,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
+  return data.publicUrl;
+}
