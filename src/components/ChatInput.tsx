@@ -10,6 +10,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
