@@ -66,7 +66,9 @@ export async function saveMessage(
     role: msg.role,
     content: msg.content,
     image_url: msg.image_url ?? null,
-  });
+    file_url: msg.file_url ?? null,
+    file_name: msg.file_name ?? null,
+  } as any);
   if (error) throw error;
 
   // Update conversation timestamp and auto-title from first user message
