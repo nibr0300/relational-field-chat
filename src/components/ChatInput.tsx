@@ -108,7 +108,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           />
           <button
             onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && !imageFile)}
+            disabled={disabled || (!input.trim() && !imageFile && !pdfFile)}
             className="p-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all glow-amber"
           >
             <Send className="w-4 h-4" />

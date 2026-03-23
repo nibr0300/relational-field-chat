@@ -1,4 +1,4 @@
-export type Msg = { role: "user" | "assistant"; content: string; image_url?: string };
+export type Msg = { role: "user" | "assistant"; content: string; image_url?: string; file_url?: string; file_name?: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 
