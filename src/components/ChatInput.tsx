@@ -31,19 +31,27 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setPdfFile(null);
   };
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    if (file.type === "application/pdf") {
+      setPdfFile(file);
+      setImageFile(null);
+      setImagePreview(null);
+    } else if (file.type.startsWith("image/")) {
+      setImageFile(file);
+      setPdfFile(null);
+      const reader = new FileReader();
+      reader.onload = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
     e.target.value = "";
   };
 
-  const removeImage = () => {
+  const removeAttachment = () => {
     setImagePreview(null);
     setImageFile(null);
+    setPdfFile(null);
   };
 
   return (
