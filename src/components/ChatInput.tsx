@@ -23,11 +23,12 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSubmit = () => {
     const trimmed = input.trim();
-    if ((!trimmed && !imageFile) || disabled) return;
-    onSend(trimmed, imageFile ?? undefined);
+    if ((!trimmed && !imageFile && !pdfFile) || disabled) return;
+    onSend(trimmed, imageFile ?? undefined, pdfFile ?? undefined);
     setInput("");
     setImagePreview(null);
     setImageFile(null);
+    setPdfFile(null);
   };
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
