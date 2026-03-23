@@ -35,19 +35,24 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setFiles([]);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? []);
+    if (selected.length === 0) return;
+
+    const newFiles: AttachedFile[] = [];
     for (const file of selected) {
       if (file.type === "application/pdf") {
-        setFiles((prev) => [...prev, { file, type: "pdf" }]);
+        newFiles.push({ file, type: "pdf" });
       } else if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setFiles((prev) => [...prev, { file, type: "image", preview: reader.result as string }]);
-        };
-        reader.readAsDataURL(file);
+        const preview = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        newFiles.push({ file, type: "image", preview });
       }
     }
+    setFiles((prev) => [...prev, ...newFiles]);
     e.target.value = "";
   };
 
