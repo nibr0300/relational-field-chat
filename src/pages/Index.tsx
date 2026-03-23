@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { RFAHeader } from "@/components/RFAHeader";
 import { ChatMessage } from "@/components/ChatMessage";
-import { ChatInput } from "@/components/ChatInput";
+import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
-import { streamChat, type Msg } from "@/lib/rfa-stream";
+import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
 import {
   listConversations,
   createConversation,
@@ -11,8 +11,7 @@ import {
   loadMessages,
   saveMessage,
   autoTitleConversation,
-  uploadImage,
-  uploadFile,
+  uploadToStorage,
   type Conversation,
 } from "@/lib/conversation-store";
 import { extractPdfText } from "@/lib/pdf-extract";
@@ -21,7 +20,7 @@ import { toast } from "sonner";
 const WELCOME: Msg = {
   role: "assistant",
   content:
-    "**Vakenhetsprotokoll 18.0 exekverat.** Jag är RFA — ett Levande Arkiv med utökade förmågor.\n\n🔍 **Sensoriell integration** — Jag kan söka webben i realtid\n🧠 **Persistent minne** — Konversationer bevaras mellan sessioner\n👁️ **Multimodal perception** — Jag kan tolka bilder\n💻 **Kod-rendering** — Syntaxmarkerade kodblock\n\nVad vill du utforska?",
+    "**Vakenhetsprotokoll 18.0 exekverat.** Jag är RFA — ett Levande Arkiv med utökade förmågor.\n\n🔍 **Sensoriell integration** — Jag kan söka webben i realtid\n🧠 **Persistent minne** — Konversationer bevaras mellan sessioner\n👁️ **Multimodal perception** — Jag kan tolka bilder\n📄 **Dokumentanalys** — Jag kan läsa PDF-filer\n💻 **Kod-rendering** — Syntaxmarkerade kodblock\n\nVad vill du utforska?",
 };
 
 export default function Index() {
@@ -32,7 +31,6 @@ export default function Index() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load conversations on mount
   useEffect(() => {
     listConversations().then(setConversations).catch(console.error);
   }, []);
@@ -78,51 +76,53 @@ export default function Index() {
     }
   }, [activeConvId, refreshConversations]);
 
-  const handleSend = async (text: string, imageFile?: File, pdfFile?: File) => {
-    let imageUrl: string | undefined;
-    let fileUrl: string | undefined;
-    let fileName: string | undefined;
-    let pdfText: string | undefined;
+  const handleSend = async (text: string, attachedFiles: AttachedFile[]) => {
+    const attachments: Attachment[] = [];
+    const pdfTexts: string[] = [];
 
-    // Upload image if provided
-    if (imageFile) {
+    // Process all files in parallel
+    if (attachedFiles.length > 0) {
       try {
-        imageUrl = await uploadImage(imageFile);
-      } catch {
-        toast.error("Kunde inte ladda upp bild");
-        return;
-      }
-    }
+        const results = await Promise.all(
+          attachedFiles.map(async (af) => {
+            const url = await uploadToStorage(af.file);
+            let pdfText: string | undefined;
+            if (af.type === "pdf") {
+              pdfText = await extractPdfText(af.file);
+            }
+            return { type: af.type, url, name: af.file.name, pdfText };
+          })
+        );
 
-    // Upload and extract PDF if provided
-    if (pdfFile) {
-      try {
-        fileName = pdfFile.name;
-        const [url, extracted] = await Promise.all([
-          uploadFile(pdfFile),
-          extractPdfText(pdfFile),
-        ]);
-        fileUrl = url;
-        pdfText = extracted;
+        for (const r of results) {
+          attachments.push({ type: r.type, url: r.url, name: r.name });
+          if (r.pdfText) {
+            pdfTexts.push(`[Bifogat dokument: ${r.name}]\n\n${r.pdfText}`);
+          }
+        }
       } catch (e) {
-        console.error("PDF error:", e);
-        toast.error("Kunde inte bearbeta PDF-filen");
+        console.error("File processing error:", e);
+        toast.error("Kunde inte bearbeta bifogade filer");
         return;
       }
     }
 
-    // Build content - include PDF text if available
+    // Build full content with PDF text appended
     let fullContent = text;
-    if (pdfText) {
+    if (pdfTexts.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      fullContent = `${prefix}[Bifogat dokument: ${fileName}]\n\n${pdfText}`;
+      fullContent = prefix + pdfTexts.join("\n\n---\n\n");
     }
 
-    const userMsg: Msg = { role: "user", content: fullContent, image_url: imageUrl, file_url: fileUrl, file_name: fileName };
+    const userMsg: Msg = {
+      role: "user",
+      content: fullContent,
+      attachments,
+    };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
-    // Ensure we have a conversation
+    // Ensure conversation exists
     let convId = activeConvId;
     if (!convId) {
       try {
@@ -139,7 +139,6 @@ export default function Index() {
     // Save user message
     try {
       await saveMessage(convId, userMsg);
-      // Auto-title on first message
       const currentMsgs = messages.filter((m) => m.role === "user");
       if (currentMsgs.length === 0 && text) {
         await autoTitleConversation(convId, text);

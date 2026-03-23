@@ -3,7 +3,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Copy, Check, FileText, ExternalLink } from "lucide-react";
 import { useState } from "react";
-import type { Msg } from "@/lib/rfa-stream";
+import type { Msg, Attachment } from "@/lib/rfa-stream";
 
 interface ChatMessageProps {
   message: Msg;
@@ -37,8 +37,50 @@ function CodeBlock({ language, children }: { language: string; children: string 
   );
 }
 
+function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
+  const images = attachments.filter((a) => a.type === "image");
+  const pdfs = attachments.filter((a) => a.type === "pdf");
+
+  return (
+    <>
+      {images.map((a, i) => (
+        <img key={`img-${i}`} src={a.url} alt={a.name} className="max-w-full max-h-64 rounded-md mb-2 border border-border" />
+      ))}
+      {pdfs.map((a, i) => (
+        <a
+          key={`pdf-${i}`}
+          href={a.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-secondary/80 border border-border rounded-lg px-3 py-2 mb-2 hover:border-primary/30 transition-colors w-fit"
+        >
+          <FileText className="w-5 h-5 text-primary" />
+          <span className="text-xs text-foreground truncate max-w-[200px]">{a.name}</span>
+          <ExternalLink className="w-3 h-3 text-muted-foreground" />
+        </a>
+      ))}
+    </>
+  );
+}
+
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
+
+  // Merge legacy fields into attachments for rendering
+  const allAttachments: Attachment[] = [...(message.attachments ?? [])];
+  if (message.image_url && !allAttachments.some((a) => a.url === message.image_url)) {
+    allAttachments.unshift({ type: "image", url: message.image_url, name: "Bild" });
+  }
+  if (message.file_url && !allAttachments.some((a) => a.url === message.file_url)) {
+    allAttachments.push({ type: "pdf", url: message.file_url, name: message.file_name || "Dokument" });
+  }
+
+  // For user messages, strip the [Bifogat dokument: ...] blocks from displayed content
+  let displayContent = message.content;
+  if (isUser && allAttachments.length > 0) {
+    displayContent = displayContent.replace(/\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m, "").trim();
+    if (!displayContent) displayContent = "";
+  }
 
   return (
     <div className={`animate-fade-in-up flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -49,27 +91,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : "bg-card border border-border text-foreground"
         }`}
       >
-        {message.image_url && (
-          <img
-            src={message.image_url}
-            alt="Uploaded"
-            className="max-w-full max-h-64 rounded-md mb-2 border border-border"
-          />
-        )}
-        {message.file_url && (
-          <a
-            href={message.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-secondary/80 border border-border rounded-lg px-3 py-2 mb-2 hover:border-primary/30 transition-colors w-fit"
-          >
-            <FileText className="w-5 h-5 text-primary" />
-            <span className="text-xs text-foreground truncate max-w-[200px]">{message.file_name || "Dokument"}</span>
-            <ExternalLink className="w-3 h-3 text-muted-foreground" />
-          </a>
-        )}
+        {allAttachments.length > 0 && <AttachmentsList attachments={allAttachments} />}
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          displayContent ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p> : null
         ) : (
           <div className="prose prose-sm prose-invert max-w-none text-foreground [&_p]:text-foreground [&_li]:text-foreground [&_strong]:text-primary [&_h1]:text-primary [&_h2]:text-primary [&_h3]:text-primary/80 [&_a]:text-primary">
             <ReactMarkdown

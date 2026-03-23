@@ -1,4 +1,17 @@
-export type Msg = { role: "user" | "assistant"; content: string; image_url?: string; file_url?: string; file_name?: string };
+export interface Attachment {
+  type: "image" | "pdf";
+  url: string;
+  name: string;
+}
+
+export type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  image_url?: string;      // legacy compat
+  file_url?: string;        // legacy compat
+  file_name?: string;       // legacy compat
+  attachments?: Attachment[];
+};
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 
@@ -15,12 +28,20 @@ export async function streamChat({
 }) {
   // Build messages for the API, including image content
   const apiMessages = messages.map((m) => {
-    if (m.image_url && m.role === "user") {
+    if (m.role !== "user") return { role: m.role, content: m.content };
+
+    const imageUrls = (m.attachments ?? [])
+      .filter((a) => a.type === "image")
+      .map((a) => a.url);
+    // Legacy fallback
+    if (!imageUrls.length && m.image_url) imageUrls.push(m.image_url);
+
+    if (imageUrls.length > 0) {
       return {
         role: "user",
         content: [
           ...(m.content ? [{ type: "text", text: m.content }] : []),
-          { type: "image_url", image_url: { url: m.image_url } },
+          ...imageUrls.map((url) => ({ type: "image_url", image_url: { url } })),
         ],
       };
     }

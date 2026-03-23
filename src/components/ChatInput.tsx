@@ -1,16 +1,22 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Paperclip, X, FileText, ImageIcon } from "lucide-react";
+import { Send, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+
+interface AttachedFile {
+  file: File;
+  type: "image" | "pdf";
+  preview?: string; // data URL for images
+}
 
 interface ChatInputProps {
-  onSend: (text: string, imageFile?: File, pdfFile?: File) => void;
+  onSend: (text: string, files: AttachedFile[]) => void;
   disabled?: boolean;
 }
 
+export type { AttachedFile };
+
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<AttachedFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -23,56 +29,55 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSubmit = () => {
     const trimmed = input.trim();
-    if ((!trimmed && !imageFile && !pdfFile) || disabled) return;
-    onSend(trimmed, imageFile ?? undefined, pdfFile ?? undefined);
+    if ((!trimmed && files.length === 0) || disabled) return;
+    onSend(trimmed, files);
     setInput("");
-    setImagePreview(null);
-    setImageFile(null);
-    setPdfFile(null);
+    setFiles([]);
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.type === "application/pdf") {
-      setPdfFile(file);
-      setImageFile(null);
-      setImagePreview(null);
-    } else if (file.type.startsWith("image/")) {
-      setImageFile(file);
-      setPdfFile(null);
-      const reader = new FileReader();
-      reader.onload = () => setImagePreview(reader.result as string);
-      reader.readAsDataURL(file);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    for (const file of selected) {
+      if (file.type === "application/pdf") {
+        setFiles((prev) => [...prev, { file, type: "pdf" }]);
+      } else if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setFiles((prev) => [...prev, { file, type: "image", preview: reader.result as string }]);
+        };
+        reader.readAsDataURL(file);
+      }
     }
     e.target.value = "";
   };
 
-  const removeAttachment = () => {
-    setImagePreview(null);
-    setImageFile(null);
-    setPdfFile(null);
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
     <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
       <div className="max-w-3xl mx-auto">
-        {(imagePreview || pdfFile) && (
-          <div className="relative inline-block mb-2">
-            {imagePreview ? (
-              <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg border border-border" />
-            ) : pdfFile ? (
-              <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-3 py-2">
-                <FileText className="w-5 h-5 text-primary" />
-                <span className="text-xs text-foreground truncate max-w-[200px]">{pdfFile.name}</span>
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {files.map((f, i) => (
+              <div key={i} className="relative">
+                {f.type === "image" && f.preview ? (
+                  <img src={f.preview} alt="Preview" className="max-h-20 rounded-lg border border-border" />
+                ) : (
+                  <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-3 py-2">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-foreground truncate max-w-[140px]">{f.file.name}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => removeFile(i)}
+                  className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
-            ) : null}
-            <button
-              onClick={removeAttachment}
-              className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground"
-            >
-              <X className="w-3 h-3" />
-            </button>
+            ))}
           </div>
         )}
         <div className="flex gap-3 items-end">
@@ -80,14 +85,15 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             ref={fileRef}
             type="file"
             accept="image/*,application/pdf"
+            multiple
             className="hidden"
-            onChange={handleFile}
+            onChange={handleFileChange}
           />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={disabled}
             className="p-3 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 disabled:opacity-30 transition-all"
-            title="Ladda upp bild eller PDF"
+            title="Bifoga filer (bilder & PDF)"
           >
             <Paperclip className="w-4 h-4" />
           </button>
@@ -108,7 +114,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           />
           <button
             onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && !imageFile && !pdfFile)}
+            disabled={disabled || (!input.trim() && files.length === 0)}
             className="p-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all glow-amber"
           >
             <Send className="w-4 h-4" />

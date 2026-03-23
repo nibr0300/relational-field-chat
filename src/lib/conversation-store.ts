@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Msg } from "./rfa-stream";
+import type { Msg, Attachment } from "./rfa-stream";
 
 export interface Conversation {
   id: string;
@@ -54,13 +54,11 @@ export async function loadMessages(conversationId: string): Promise<Msg[]> {
     image_url: m.image_url ?? undefined,
     file_url: m.file_url ?? undefined,
     file_name: m.file_name ?? undefined,
+    attachments: (m.attachments as Attachment[] | null) ?? undefined,
   }));
 }
 
-export async function saveMessage(
-  conversationId: string,
-  msg: Msg
-) {
+export async function saveMessage(conversationId: string, msg: Msg) {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     role: msg.role,
@@ -68,10 +66,10 @@ export async function saveMessage(
     image_url: msg.image_url ?? null,
     file_url: msg.file_url ?? null,
     file_name: msg.file_name ?? null,
+    attachments: msg.attachments ?? [],
   } as any);
   if (error) throw error;
 
-  // Update conversation timestamp and auto-title from first user message
   await supabase
     .from("conversations")
     .update({ updated_at: new Date().toISOString() })
@@ -83,17 +81,8 @@ export async function autoTitleConversation(conversationId: string, firstUserMsg
   await updateConversationTitle(conversationId, title);
 }
 
-export async function uploadImage(file: File): Promise<string> {
-  const ext = file.name.split(".").pop() || "png";
-  const path = `${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from("chat-images").upload(path, file);
-  if (error) throw error;
-  const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
-  return data.publicUrl;
-}
-
-export async function uploadFile(file: File): Promise<string> {
-  const ext = file.name.split(".").pop() || "pdf";
+export async function uploadToStorage(file: File): Promise<string> {
+  const ext = file.name.split(".").pop() || "bin";
   const path = `${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from("chat-images").upload(path, file, {
     contentType: file.type,
@@ -102,3 +91,7 @@ export async function uploadFile(file: File): Promise<string> {
   const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
   return data.publicUrl;
 }
+
+// Keep legacy exports for backward compat
+export const uploadImage = uploadToStorage;
+export const uploadFile = uploadToStorage;
