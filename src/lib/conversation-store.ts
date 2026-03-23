@@ -48,10 +48,12 @@ export async function loadMessages(conversationId: string): Promise<Msg[]> {
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((m) => ({
+  return (data ?? []).map((m: any) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
     image_url: m.image_url ?? undefined,
+    file_url: m.file_url ?? undefined,
+    file_name: m.file_name ?? undefined,
   }));
 }
 
@@ -64,7 +66,9 @@ export async function saveMessage(
     role: msg.role,
     content: msg.content,
     image_url: msg.image_url ?? null,
-  });
+    file_url: msg.file_url ?? null,
+    file_name: msg.file_name ?? null,
+  } as any);
   if (error) throw error;
 
   // Update conversation timestamp and auto-title from first user message
@@ -83,6 +87,17 @@ export async function uploadImage(file: File): Promise<string> {
   const ext = file.name.split(".").pop() || "png";
   const path = `${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from("chat-images").upload(path, file);
+  if (error) throw error;
+  const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function uploadFile(file: File): Promise<string> {
+  const ext = file.name.split(".").pop() || "pdf";
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("chat-images").upload(path, file, {
+    contentType: file.type,
+  });
   if (error) throw error;
   const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
   return data.publicUrl;

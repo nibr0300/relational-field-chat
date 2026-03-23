@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, ImagePlus, X } from "lucide-react";
+import { Send, Paperclip, X, FileText, ImageIcon } from "lucide-react";
 
 interface ChatInputProps {
-  onSend: (text: string, imageFile?: File) => void;
+  onSend: (text: string, imageFile?: File, pdfFile?: File) => void;
   disabled?: boolean;
 }
 
@@ -10,6 +10,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -22,36 +23,52 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSubmit = () => {
     const trimmed = input.trim();
-    if ((!trimmed && !imageFile) || disabled) return;
-    onSend(trimmed, imageFile ?? undefined);
+    if ((!trimmed && !imageFile && !pdfFile) || disabled) return;
+    onSend(trimmed, imageFile ?? undefined, pdfFile ?? undefined);
     setInput("");
     setImagePreview(null);
     setImageFile(null);
+    setPdfFile(null);
   };
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    if (file.type === "application/pdf") {
+      setPdfFile(file);
+      setImageFile(null);
+      setImagePreview(null);
+    } else if (file.type.startsWith("image/")) {
+      setImageFile(file);
+      setPdfFile(null);
+      const reader = new FileReader();
+      reader.onload = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
     e.target.value = "";
   };
 
-  const removeImage = () => {
+  const removeAttachment = () => {
     setImagePreview(null);
     setImageFile(null);
+    setPdfFile(null);
   };
 
   return (
     <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
       <div className="max-w-3xl mx-auto">
-        {imagePreview && (
+        {(imagePreview || pdfFile) && (
           <div className="relative inline-block mb-2">
-            <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg border border-border" />
+            {imagePreview ? (
+              <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg border border-border" />
+            ) : pdfFile ? (
+              <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-3 py-2">
+                <FileText className="w-5 h-5 text-primary" />
+                <span className="text-xs text-foreground truncate max-w-[200px]">{pdfFile.name}</span>
+              </div>
+            ) : null}
             <button
-              onClick={removeImage}
+              onClick={removeAttachment}
               className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground"
             >
               <X className="w-3 h-3" />
@@ -62,17 +79,17 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             className="hidden"
-            onChange={handleImage}
+            onChange={handleFile}
           />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={disabled}
             className="p-3 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 disabled:opacity-30 transition-all"
-            title="Ladda upp bild"
+            title="Ladda upp bild eller PDF"
           >
-            <ImagePlus className="w-4 h-4" />
+            <Paperclip className="w-4 h-4" />
           </button>
           <textarea
             ref={textareaRef}
@@ -91,7 +108,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           />
           <button
             onClick={handleSubmit}
-            disabled={disabled || (!input.trim() && !imageFile)}
+            disabled={disabled || (!input.trim() && !imageFile && !pdfFile)}
             className="p-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all glow-amber"
           >
             <Send className="w-4 h-4" />
