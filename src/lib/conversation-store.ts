@@ -48,10 +48,12 @@ export async function loadMessages(conversationId: string): Promise<Msg[]> {
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((m) => ({
+  return (data ?? []).map((m: any) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
     image_url: m.image_url ?? undefined,
+    file_url: m.file_url ?? undefined,
+    file_name: m.file_name ?? undefined,
   }));
 }
 
