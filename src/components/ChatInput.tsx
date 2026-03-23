@@ -79,17 +79,17 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             className="hidden"
-            onChange={handleImage}
+            onChange={handleFile}
           />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={disabled}
             className="p-3 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 disabled:opacity-30 transition-all"
-            title="Ladda upp bild"
+            title="Ladda upp bild eller PDF"
           >
-            <ImagePlus className="w-4 h-4" />
+            <Paperclip className="w-4 h-4" />
           </button>
           <textarea
             ref={textareaRef}
