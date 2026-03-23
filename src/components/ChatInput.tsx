@@ -57,11 +57,18 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   return (
     <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
       <div className="max-w-3xl mx-auto">
-        {imagePreview && (
+        {(imagePreview || pdfFile) && (
           <div className="relative inline-block mb-2">
-            <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg border border-border" />
+            {imagePreview ? (
+              <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg border border-border" />
+            ) : pdfFile ? (
+              <div className="flex items-center gap-2 bg-secondary border border-border rounded-lg px-3 py-2">
+                <FileText className="w-5 h-5 text-primary" />
+                <span className="text-xs text-foreground truncate max-w-[200px]">{pdfFile.name}</span>
+              </div>
+            ) : null}
             <button
-              onClick={removeImage}
+              onClick={removeAttachment}
               className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-destructive text-destructive-foreground"
             >
               <X className="w-3 h-3" />
