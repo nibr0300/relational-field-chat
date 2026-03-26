@@ -3,6 +3,7 @@ import { RFAHeader } from "@/components/RFAHeader";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
+import { MemoryPanel } from "@/components/MemoryPanel";
 import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
 import {
   listConversations,
@@ -29,6 +30,7 @@ export default function Index() {
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -167,6 +169,7 @@ export default function Index() {
     try {
       await streamChat({
         messages: allMessages,
+        conversationId: finalConvId,
         onDelta: upsert,
         onDone: async () => {
           setIsLoading(false);
@@ -202,7 +205,8 @@ export default function Index() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <RFAHeader />
+        <RFAHeader onMemoryClick={() => setMemoryOpen(true)} />
+        <MemoryPanel isOpen={memoryOpen} onClose={() => setMemoryOpen(false)} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
             {messages.map((msg, i) => (
