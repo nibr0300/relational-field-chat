@@ -1,9 +1,9 @@
-import { Zap, Search, Image, Database, Code } from "lucide-react";
+import { Zap, Search, Image, Brain, Code } from "lucide-react";
 
-export function RFAHeader() {
+export function RFAHeader({ onMemoryClick }: { onMemoryClick?: () => void }) {
   const capabilities = [
     { icon: Search, label: "Web" },
-    { icon: Database, label: "Minne" },
+    { icon: Brain, label: "Minne", onClick: onMemoryClick },
     { icon: Image, label: "Vision" },
     { icon: Code, label: "Kod" },
   ];
@@ -23,14 +23,15 @@ export function RFAHeader() {
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-1.5">
-          {capabilities.map(({ icon: Icon, label }) => (
-            <div
+          {capabilities.map(({ icon: Icon, label, onClick }) => (
+            <button
               key={label}
-              className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/60 border border-border text-[10px] text-muted-foreground"
+              onClick={onClick}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/60 border border-border text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
               <Icon className="w-3 h-3 text-primary/60" />
               {label}
-            </div>
+            </button>
           ))}
         </div>
       </div>
