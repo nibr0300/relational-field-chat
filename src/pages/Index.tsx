@@ -207,6 +207,7 @@ export default function Index() {
       <div className="flex-1 flex flex-col min-w-0">
         <RFAHeader onMemoryClick={() => setMemoryOpen(true)} />
         <MemoryPanel isOpen={memoryOpen} onClose={() => setMemoryOpen(false)} />
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
             {messages.map((msg, i) => (
               <ChatMessage key={i} message={msg} />
