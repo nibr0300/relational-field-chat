@@ -35,6 +35,41 @@ export type Database = {
         }
         Relationships: []
       }
+      memory_eigenstates: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          significance: number
+          source_conversation_id: string | null
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          id?: string
+          significance?: number
+          source_conversation_id?: string | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          significance?: number
+          source_conversation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_eigenstates_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           attachments: Json | null
