@@ -231,7 +231,14 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
     });
 
     if (!resp.ok) return resp;
-    const data = await resp.json();
+    const rawText = await resp.text();
+    let data: any;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      console.error("Failed to parse AI response:", rawText.slice(0, 500));
+      break; // Fall through to final streaming call
+    }
     const choice = data.choices?.[0];
 
     if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
