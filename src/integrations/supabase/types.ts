@@ -35,6 +35,62 @@ export type Database = {
         }
         Relationships: []
       }
+      executions: {
+        Row: {
+          code: string
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          field_impact: Json | null
+          id: string
+          intent: string | null
+          language: string
+          output: string | null
+          safety_score: number
+          script_id: string
+          status: string
+        }
+        Insert: {
+          code: string
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          field_impact?: Json | null
+          id?: string
+          intent?: string | null
+          language?: string
+          output?: string | null
+          safety_score?: number
+          script_id?: string
+          status?: string
+        }
+        Update: {
+          code?: string
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          field_impact?: Json | null
+          id?: string
+          intent?: string | null
+          language?: string
+          output?: string | null
+          safety_score?: number
+          script_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memory_eigenstates: {
         Row: {
           category: string
