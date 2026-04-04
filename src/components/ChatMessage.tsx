@@ -4,18 +4,40 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Copy, Check, FileText, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { Msg, Attachment } from "@/lib/rfa-stream";
+import { ExecutorBlock } from "@/components/ExecutorBlock";
 
 interface ChatMessageProps {
   message: Msg;
+  conversationId?: string | null;
 }
 
-function CodeBlock({ language, children }: { language: string; children: string }) {
+function CodeBlock({ language, children, conversationId }: { language: string; children: string; conversationId?: string | null }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard.writeText(children);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Detect // EXECUTE marker
+  const isExecutable = children.trimStart().startsWith("// EXECUTE");
+  if (isExecutable && (language === "python" || language === "py")) {
+    // Parse optional metadata from first line: // EXECUTE intent="..." safety=0.9
+    const firstLine = children.split("\n")[0];
+    const intentMatch = firstLine.match(/intent="([^"]+)"/);
+    const safetyMatch = firstLine.match(/safety=([\d.]+)/);
+    const codeBody = children.split("\n").slice(1).join("\n").trim();
+
+    return (
+      <ExecutorBlock
+        code={codeBody}
+        language="python"
+        intent={intentMatch?.[1]}
+        safetyScore={safetyMatch ? parseFloat(safetyMatch[1]) : 0.7}
+        conversationId={conversationId}
+      />
+    );
+  }
 
   return (
     <div className="relative group my-2 rounded-lg overflow-hidden border border-border">
@@ -63,10 +85,9 @@ function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
   );
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, conversationId }: ChatMessageProps) {
   const isUser = message.role === "user";
 
-  // Merge legacy fields into attachments for rendering
   const allAttachments: Attachment[] = [...(message.attachments ?? [])];
   if (message.image_url && !allAttachments.some((a) => a.url === message.image_url)) {
     allAttachments.unshift({ type: "image", url: message.image_url, name: "Bild" });
@@ -75,7 +96,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
     allAttachments.push({ type: "pdf", url: message.file_url, name: message.file_name || "Dokument" });
   }
 
-  // For user messages, strip the [Bifogat dokument: ...] blocks from displayed content
   let displayContent = message.content;
   if (isUser && allAttachments.length > 0) {
     displayContent = displayContent.replace(/\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m, "").trim();
@@ -102,7 +122,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   const match = /language-(\w+)/.exec(className || "");
                   const codeStr = String(children).replace(/\n$/, "");
                   if (match || codeStr.includes("\n")) {
-                    return <CodeBlock language={match?.[1] || ""}>{codeStr}</CodeBlock>;
+                    return <CodeBlock language={match?.[1] || ""} conversationId={conversationId}>{codeStr}</CodeBlock>;
                   }
                   return (
                     <code className="text-primary/80 bg-secondary px-1.5 py-0.5 rounded text-xs" {...props}>
