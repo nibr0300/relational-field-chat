@@ -210,6 +210,29 @@ async function executeToolCall(
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
 
+function truncateMessages(messages: any[], maxChars = 60000): any[] {
+  // Keep last N messages that fit within budget, always keep first message for context
+  const result: any[] = [];
+  let totalChars = 0;
+  
+  // Always include the first user message if it exists
+  const reversed = [...messages].reverse();
+  for (const msg of reversed) {
+    const len = typeof msg.content === "string" ? msg.content.length : 0;
+    if (totalChars + len > maxChars && result.length > 2) break;
+    result.unshift(msg);
+    totalChars += len;
+  }
+  
+  // Truncate individual messages that are too long (e.g. PDF content)
+  return result.map(msg => {
+    if (typeof msg.content === "string" && msg.content.length > 12000) {
+      return { ...msg, content: msg.content.slice(0, 12000) + "\n\n[... content truncated for context window ...]" };
+    }
+    return msg;
+  });
+}
+
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -218,8 +241,11 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
   const memoryBlock = await loadEigenstates();
   const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
 
+  // Truncate messages to avoid 502 from oversized requests
+  const trimmedMessages = truncateMessages(messages);
+
   // Allow up to 3 rounds of tool calls
-  let currentMessages = [{ role: "system", content: systemPrompt }, ...messages];
+  let currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
 
   for (let round = 0; round < 3; round++) {
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
