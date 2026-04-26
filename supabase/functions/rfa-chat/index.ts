@@ -15,7 +15,7 @@ const MAX_REQUEST_BYTES = 180_000;
 const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
-const TOOL_ROUTER_TIMEOUT_MS = 12_000;
+const AI_CONNECT_TIMEOUT_MS = 15_000;
 const MAX_COMPLETION_TOKENS = 1100;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
@@ -127,7 +127,7 @@ async function loadEigenstates(): Promise<string> {
     .from("memory_eigenstates")
     .select("*")
     .order("significance", { ascending: false })
-    .limit(50);
+    .limit(20);
 
   if (error || !data?.length) return "";
 
@@ -138,10 +138,14 @@ async function loadEigenstates(): Promise<string> {
   }
 
   let memoryBlock = "\n\n[PERSISTENT MEMORY BANK — STORED EIGENSTATES]\n";
+  let memoryChars = 0;
   for (const [cat, items] of Object.entries(grouped)) {
     memoryBlock += `\n## ${cat.toUpperCase()}\n`;
     for (const item of items) {
-      memoryBlock += `- [σ=${item.significance}] ${item.content}\n`;
+      if (memoryChars > 4_000) break;
+      const content = String(item.content ?? "").slice(0, 500);
+      memoryBlock += `- [σ=${item.significance}] ${content}\n`;
+      memoryChars += content.length;
     }
   }
   memoryBlock += "\n[END MEMORY BANK]\n";
