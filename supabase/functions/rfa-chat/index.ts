@@ -396,22 +396,8 @@ serve(async (req) => {
       });
     }
     const { messages, conversationId } = body;
-    const response = await callAIWithTools(messages, conversationId);
 
-    if (!response.ok) {
-      try { await response.body?.cancel(); } catch {}
-      console.error("AI gateway error status:", response.status);
-    }
-
-    const streamBody = response.ok && response.body
-      ? response.body
-      : createErrorStream(response.status === 429
-        ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
-        : response.status === 402
-          ? "AI-krediterna är slut. Fyll på innan nästa körning."
-          : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade.");
-
-    return new Response(streamBody, {
+    return new Response(createChatStream(messages, conversationId), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
