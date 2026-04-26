@@ -14,6 +14,66 @@ export type Msg = {
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
+const MAX_MESSAGE_CHARS = 5000;
+const MAX_TOTAL_CHARS = 16000;
+const MAX_CONTEXT_MESSAGES = 10;
+
+function capText(text: string): string {
+  if (text.length <= MAX_MESSAGE_CHARS) return text;
+  return `${text.slice(0, MAX_MESSAGE_CHARS)}\n\n[... äldre innehåll trunkerat för stabil körning ...]`;
+}
+
+function messageSize(message: any): number {
+  if (typeof message.content === "string") return message.content.length;
+  if (Array.isArray(message.content)) {
+    return message.content.reduce((sum: number, part: any) => {
+      if (part?.type === "text") return sum + String(part.text ?? "").length;
+      if (part?.type === "image_url") return sum + 750;
+      return sum + 250;
+    }, 0);
+  }
+  return 500;
+}
+
+function capMessage(message: any): any {
+  if (typeof message.content === "string") {
+    return { ...message, content: capText(message.content) };
+  }
+  if (Array.isArray(message.content)) {
+    let remainingText = MAX_MESSAGE_CHARS;
+    return {
+      ...message,
+      content: message.content.map((part: any) => {
+        if (part?.type !== "text") return part;
+        const text = String(part.text ?? "");
+        const capped = text.slice(0, Math.max(0, remainingText));
+        remainingText -= capped.length;
+        return {
+          ...part,
+          text: capped.length < text.length ? `${capped}\n\n[... bifogad text trunkerad ...]` : capped,
+        };
+      }),
+    };
+  }
+  return message;
+}
+
+function compactForTransport(messages: any[]): any[] {
+  const capped = messages.map(capMessage).filter((m) => messageSize(m) > 0);
+  const selected: any[] = [];
+  let total = 0;
+
+  for (let i = capped.length - 1; i >= 0; i--) {
+    const msg = capped[i];
+    const len = messageSize(msg);
+    if (selected.length >= MAX_CONTEXT_MESSAGES) break;
+    if (selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
+    selected.unshift(msg);
+    total += len;
+  }
+
+  return selected.length ? selected : capped.slice(-1);
+}
 
 export async function streamChat({
   messages,
@@ -29,7 +89,7 @@ export async function streamChat({
   onError: (error: string) => void;
 }) {
   // Build messages for the API, including image content
-  const apiMessages = messages.map((m) => {
+  const apiMessages = compactForTransport(messages.map((m) => {
     if (m.role !== "user") return { role: m.role, content: m.content };
 
     const imageUrls = (m.attachments ?? [])
@@ -48,7 +108,7 @@ export async function streamChat({
       };
     }
     return { role: m.role, content: m.content };
-  });
+  }));
 
   // Retry transient edge runtime errors (cold boot 502/503/504) with backoff
   let resp: Response | null = null;
