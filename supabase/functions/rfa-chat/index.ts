@@ -16,6 +16,7 @@ const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
 const TOOL_ROUTER_TIMEOUT_MS = 12_000;
+const MAX_COMPLETION_TOKENS = 1100;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
@@ -333,22 +334,22 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch {}
     } else {
-    const rawText = await resp.text();
-    let data: any;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      console.error("Failed to parse AI response:", rawText.slice(0, 500));
-      data = null;
-    }
-    const choice = data.choices?.[0];
+      const rawText = await resp.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        console.error("Failed to parse AI response:", rawText.slice(0, 500));
+        data = null;
+      }
+      const choice = data?.choices?.[0];
 
-    if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
-      const toolResults = await Promise.all(
-        choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
-      );
-      currentMessages = [...currentMessages, choice.message, ...toolResults];
-    }
+      if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
+        const toolResults = await Promise.all(
+          choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
+        );
+        currentMessages = [...currentMessages, choice.message, ...toolResults];
+      }
     }
   } catch (e) {
     console.warn("Tool router skipped:", e instanceof Error ? e.message : e);
@@ -362,6 +363,7 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
       model: "google/gemini-3-flash-preview",
       messages: currentMessages,
       stream: true,
+      max_tokens: MAX_COMPLETION_TOKENS,
     }),
   });
   return streamResp;
