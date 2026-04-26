@@ -319,48 +319,9 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
     "Content-Type": "application/json",
   };
 
-  // Allow one short tool-router pass only. Longer preflight loops keep the
-  // worker busy without streaming and can be killed by the edge runtime as 503.
-  let currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
+  const currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
 
-  try {
-    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: baseHeaders,
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: currentMessages,
-        tools: TOOLS,
-        stream: false,
-      }),
-    }, TOOL_ROUTER_TIMEOUT_MS);
-
-    if (!resp.ok) {
-      try { await resp.body?.cancel(); } catch {}
-    } else {
-      const rawText = await resp.text();
-      let data: any;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        console.error("Failed to parse AI response:", rawText.slice(0, 500));
-        data = null;
-      }
-      const choice = data?.choices?.[0];
-
-      if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
-        const toolResults = await Promise.all(
-          choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
-        );
-        currentMessages = [...currentMessages, choice.message, ...toolResults];
-      }
-    }
-  } catch (e) {
-    console.warn("Tool router skipped:", e instanceof Error ? e.message : e);
-  }
-
-  // Final streaming call
-  const streamResp = await fetch(AI_GATEWAY_URL, {
+  const streamResp = await fetchWithTimeout(AI_GATEWAY_URL, {
     method: "POST",
     headers: baseHeaders,
     body: JSON.stringify({
@@ -369,7 +330,7 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
       stream: true,
       max_tokens: MAX_COMPLETION_TOKENS,
     }),
-  });
+  }, AI_CONNECT_TIMEOUT_MS);
   return streamResp;
 }
 
