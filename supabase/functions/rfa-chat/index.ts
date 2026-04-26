@@ -397,31 +397,21 @@ serve(async (req) => {
     const { messages, conversationId } = body;
     const response = await callAIWithTools(messages, conversationId);
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please wait a moment." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      try { await response.body?.cancel(); } catch {}
-      console.error("AI gateway error status:", response.status);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const streamBody = response.ok
+      ? response.body
+      : createErrorStream(response.status === 429
+        ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
+        : response.status === 402
+          ? "AI-krediterna är slut. Fyll på innan nästa körning."
+          : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade.");
 
-    return new Response(response.body, {
+    return new Response(streamBody, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
     console.error("rfa-chat error:", e instanceof Error ? e.stack : e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(createErrorStream("RFA-funktionen fångade ett internt fel och höll sessionen vid liv."), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   }
 });
