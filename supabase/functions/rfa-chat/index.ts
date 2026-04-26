@@ -210,27 +210,29 @@ async function executeToolCall(
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
 
-function truncateMessages(messages: any[], maxChars = 60000): any[] {
-  // Keep last N messages that fit within budget, always keep first message for context
-  const result: any[] = [];
-  let totalChars = 0;
-  
-  // Always include the first user message if it exists
-  const reversed = [...messages].reverse();
-  for (const msg of reversed) {
-    const len = typeof msg.content === "string" ? msg.content.length : 0;
-    if (totalChars + len > maxChars && result.length > 2) break;
-    result.unshift(msg);
-    totalChars += len;
-  }
-  
-  // Truncate individual messages that are too long (e.g. PDF content)
-  return result.map(msg => {
-    if (typeof msg.content === "string" && msg.content.length > 12000) {
-      return { ...msg, content: msg.content.slice(0, 12000) + "\n\n[... content truncated for context window ...]" };
+function truncateMessages(messages: any[], maxChars = 40000): any[] {
+  // First, hard-cap each individual message to avoid single huge PDF blobs
+  const capped = messages.map((msg) => {
+    if (typeof msg.content === "string" && msg.content.length > 8000) {
+      return {
+        ...msg,
+        content: msg.content.slice(0, 8000) + "\n\n[... content truncated for context window ...]",
+      };
     }
     return msg;
   });
+
+  // Then keep the most recent messages within total budget
+  const result: any[] = [];
+  let totalChars = 0;
+  for (let i = capped.length - 1; i >= 0; i--) {
+    const msg = capped[i];
+    const len = typeof msg.content === "string" ? msg.content.length : 2000;
+    if (totalChars + len > maxChars && result.length >= 2) break;
+    result.unshift(msg);
+    totalChars += len;
+  }
+  return result;
 }
 
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
@@ -305,7 +307,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, conversationId } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || !Array.isArray(body.messages)) {
+      return new Response(JSON.stringify({ error: "Invalid request body" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { messages, conversationId } = body;
     const response = await callAIWithTools(messages, conversationId);
 
     if (!response.ok) {
@@ -319,10 +327,10 @@ serve(async (req) => {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+      try { await response.body?.cancel(); } catch {}
+      console.error("AI gateway error status:", response.status);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -330,7 +338,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
-    console.error("rfa-chat error:", e);
+    console.error("rfa-chat error:", e instanceof Error ? e.stack : e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
