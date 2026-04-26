@@ -218,7 +218,7 @@ async function executeToolCall(
 function contentLength(content: unknown): number {
   if (typeof content === "string") return content.length;
   if (Array.isArray(content)) {
-    return content.reduce((sum, part: any) => {
+    return content.reduce((sum: number, part: any) => {
       if (part?.type === "text") return sum + String(part.text ?? "").length;
       if (part?.type === "image_url") return sum + 750;
       return sum + 250;
