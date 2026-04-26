@@ -50,18 +50,38 @@ export async function streamChat({
     return { role: m.role, content: m.content };
   });
 
-  const resp = await fetch(CHAT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
-    body: JSON.stringify({ messages: apiMessages, conversationId }),
-  });
+  // Retry transient edge runtime errors (cold boot 502/503/504) with backoff
+  let resp: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: apiMessages, conversationId }),
+      });
+      if (![502, 503, 504].includes(resp.status)) break;
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 400 * Math.pow(3, attempt)));
+  }
+
+  if (!resp) {
+    onError(lastErr instanceof Error ? lastErr.message : "Nätverksfel");
+    return;
+  }
 
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
-    onError(data.error || `Error ${resp.status}`);
+    if ([502, 503, 504].includes(resp.status)) {
+      onError("Tjänsten startar om. Försök igen om några sekunder.");
+    } else {
+      onError(data.error || data.message || `Error ${resp.status}`);
+    }
     return;
   }
 
