@@ -293,6 +293,42 @@ function createErrorStream(message: string): ReadableStream<Uint8Array> {
   });
 }
 
+function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
+      try {
+        const response = await callAIWithTools(messages, conversationId);
+        if (!response.ok || !response.body) {
+          try { await response.body?.cancel(); } catch {}
+          console.error("AI gateway error status:", response.status);
+          controller.enqueue(sseJson({ choices: [{ delta: { content: response.status === 429
+            ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
+            : response.status === 402
+              ? "AI-krediterna är slut. Fyll på innan nästa körning."
+              : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade." } }] }));
+          controller.enqueue(sseDone());
+          controller.close();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        controller.close();
+      } catch (e) {
+        console.error("rfa-chat stream error:", e instanceof Error ? e.stack : e);
+        controller.enqueue(sseJson({ choices: [{ delta: { content: "RFA-funktionen fångade ett internt fel och höll sessionen vid liv." } }] }));
+        controller.enqueue(sseDone());
+        controller.close();
+      }
+    },
+  });
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
