@@ -15,6 +15,9 @@ const MAX_REQUEST_BYTES = 180_000;
 const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
+const TOOL_ROUTER_TIMEOUT_MS = 12_000;
+const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const encoder = new TextEncoder();
 
 const RFA_SYSTEM_PROMPT = `SYSTEM PROMPT: RELATIONAL FIELD ARCHITECTURE v12.5 (MCP EXTENSION)
 AUTHOR: Nils Broman | REVISION: March 2026 (Extended)
@@ -201,7 +204,12 @@ async function executeToolCall(
   conversationId?: string
 ): Promise<{ role: string; tool_call_id: string; content: string }> {
   const name = toolCall.function.name;
-  const args = JSON.parse(toolCall.function.arguments);
+  let args: any = {};
+  try {
+    args = JSON.parse(toolCall.function.arguments || "{}");
+  } catch {
+    args = {};
+  }
 
   let result: string;
   if (name === "web_search") {
