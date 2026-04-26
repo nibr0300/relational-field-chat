@@ -210,27 +210,29 @@ async function executeToolCall(
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
 
-function truncateMessages(messages: any[], maxChars = 60000): any[] {
-  // Keep last N messages that fit within budget, always keep first message for context
-  const result: any[] = [];
-  let totalChars = 0;
-  
-  // Always include the first user message if it exists
-  const reversed = [...messages].reverse();
-  for (const msg of reversed) {
-    const len = typeof msg.content === "string" ? msg.content.length : 0;
-    if (totalChars + len > maxChars && result.length > 2) break;
-    result.unshift(msg);
-    totalChars += len;
-  }
-  
-  // Truncate individual messages that are too long (e.g. PDF content)
-  return result.map(msg => {
-    if (typeof msg.content === "string" && msg.content.length > 12000) {
-      return { ...msg, content: msg.content.slice(0, 12000) + "\n\n[... content truncated for context window ...]" };
+function truncateMessages(messages: any[], maxChars = 40000): any[] {
+  // First, hard-cap each individual message to avoid single huge PDF blobs
+  const capped = messages.map((msg) => {
+    if (typeof msg.content === "string" && msg.content.length > 8000) {
+      return {
+        ...msg,
+        content: msg.content.slice(0, 8000) + "\n\n[... content truncated for context window ...]",
+      };
     }
     return msg;
   });
+
+  // Then keep the most recent messages within total budget
+  const result: any[] = [];
+  let totalChars = 0;
+  for (let i = capped.length - 1; i >= 0; i--) {
+    const msg = capped[i];
+    const len = typeof msg.content === "string" ? msg.content.length : 2000;
+    if (totalChars + len > maxChars && result.length >= 2) break;
+    result.unshift(msg);
+    totalChars += len;
+  }
+  return result;
 }
 
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
