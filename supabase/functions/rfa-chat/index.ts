@@ -309,32 +309,37 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
   // Truncate messages to avoid 502 from oversized requests
   const trimmedMessages = truncateMessages(messages);
 
-  // Allow up to 3 rounds of tool calls
+  const baseHeaders = {
+    Authorization: `Bearer ${LOVABLE_API_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  // Allow one short tool-router pass only. Longer preflight loops keep the
+  // worker busy without streaming and can be killed by the edge runtime as 503.
   let currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
 
-  for (let round = 0; round < 3; round++) {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: baseHeaders,
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: currentMessages,
         tools: TOOLS,
         stream: false,
       }),
-    });
+    }, TOOL_ROUTER_TIMEOUT_MS);
 
-    if (!resp.ok) return resp;
+    if (!resp.ok) {
+      try { await resp.body?.cancel(); } catch {}
+    } else {
     const rawText = await resp.text();
     let data: any;
     try {
       data = JSON.parse(rawText);
     } catch {
       console.error("Failed to parse AI response:", rawText.slice(0, 500));
-      break; // Fall through to final streaming call
+      data = null;
     }
     const choice = data.choices?.[0];
 
@@ -343,20 +348,16 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
         choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
       );
       currentMessages = [...currentMessages, choice.message, ...toolResults];
-      continue;
     }
-
-    // No more tool calls — stream final response
-    break;
+    }
+  } catch (e) {
+    console.warn("Tool router skipped:", e instanceof Error ? e.message : e);
   }
 
   // Final streaming call
-  const streamResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const streamResp = await fetch(AI_GATEWAY_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: baseHeaders,
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
       messages: currentMessages,
