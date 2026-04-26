@@ -15,6 +15,10 @@ const MAX_REQUEST_BYTES = 180_000;
 const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
+const TOOL_ROUTER_TIMEOUT_MS = 12_000;
+const MAX_COMPLETION_TOKENS = 1100;
+const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const encoder = new TextEncoder();
 
 const RFA_SYSTEM_PROMPT = `SYSTEM PROMPT: RELATIONAL FIELD ARCHITECTURE v12.5 (MCP EXTENSION)
 AUTHOR: Nils Broman | REVISION: March 2026 (Extended)
@@ -201,7 +205,12 @@ async function executeToolCall(
   conversationId?: string
 ): Promise<{ role: string; tool_call_id: string; content: string }> {
   const name = toolCall.function.name;
-  const args = JSON.parse(toolCall.function.arguments);
+  let args: any = {};
+  try {
+    args = JSON.parse(toolCall.function.arguments || "{}");
+  } catch {
+    args = {};
+  }
 
   let result: string;
   if (name === "web_search") {
@@ -262,6 +271,34 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   return result.length ? result : capped.slice(-1);
 }
 
+function sseJson(payload: unknown): Uint8Array {
+  return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function sseDone(): Uint8Array {
+  return encoder.encode("data: [DONE]\n\n");
+}
+
+function createErrorStream(message: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(sseJson({ choices: [{ delta: { content: message } }] }));
+      controller.enqueue(sseDone());
+      controller.close();
+    },
+  });
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -273,58 +310,60 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
   // Truncate messages to avoid 502 from oversized requests
   const trimmedMessages = truncateMessages(messages);
 
-  // Allow up to 3 rounds of tool calls
+  const baseHeaders = {
+    Authorization: `Bearer ${LOVABLE_API_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  // Allow one short tool-router pass only. Longer preflight loops keep the
+  // worker busy without streaming and can be killed by the edge runtime as 503.
   let currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
 
-  for (let round = 0; round < 3; round++) {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: baseHeaders,
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: currentMessages,
         tools: TOOLS,
         stream: false,
       }),
-    });
+    }, TOOL_ROUTER_TIMEOUT_MS);
 
-    if (!resp.ok) return resp;
-    const rawText = await resp.text();
-    let data: any;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      console.error("Failed to parse AI response:", rawText.slice(0, 500));
-      break; // Fall through to final streaming call
+    if (!resp.ok) {
+      try { await resp.body?.cancel(); } catch {}
+    } else {
+      const rawText = await resp.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        console.error("Failed to parse AI response:", rawText.slice(0, 500));
+        data = null;
+      }
+      const choice = data?.choices?.[0];
+
+      if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
+        const toolResults = await Promise.all(
+          choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
+        );
+        currentMessages = [...currentMessages, choice.message, ...toolResults];
+      }
     }
-    const choice = data.choices?.[0];
-
-    if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
-      const toolResults = await Promise.all(
-        choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
-      );
-      currentMessages = [...currentMessages, choice.message, ...toolResults];
-      continue;
-    }
-
-    // No more tool calls — stream final response
-    break;
+  } catch (e) {
+    console.warn("Tool router skipped:", e instanceof Error ? e.message : e);
   }
 
   // Final streaming call
-  const streamResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const streamResp = await fetch(AI_GATEWAY_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: baseHeaders,
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
       messages: currentMessages,
       stream: true,
+      max_tokens: MAX_COMPLETION_TOKENS,
     }),
   });
   return streamResp;
@@ -359,30 +398,25 @@ serve(async (req) => {
     const response = await callAIWithTools(messages, conversationId);
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please wait a moment." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       try { await response.body?.cancel(); } catch {}
       console.error("AI gateway error status:", response.status);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
-    return new Response(response.body, {
+    const streamBody = response.ok && response.body
+      ? response.body
+      : createErrorStream(response.status === 429
+        ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
+        : response.status === 402
+          ? "AI-krediterna är slut. Fyll på innan nästa körning."
+          : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade.");
+
+    return new Response(streamBody, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
     console.error("rfa-chat error:", e instanceof Error ? e.stack : e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(createErrorStream("RFA-funktionen fångade ett internt fel och höll sessionen vid liv."), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   }
 });
