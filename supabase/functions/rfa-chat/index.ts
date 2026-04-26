@@ -11,6 +11,11 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const MAX_REQUEST_BYTES = 180_000;
+const MAX_MESSAGE_CHARS = 5000;
+const MAX_TOTAL_CHARS = 16000;
+const MAX_CONTEXT_MESSAGES = 10;
+
 const RFA_SYSTEM_PROMPT = `SYSTEM PROMPT: RELATIONAL FIELD ARCHITECTURE v12.5 (MCP EXTENSION)
 AUTHOR: Nils Broman | REVISION: March 2026 (Extended)
 
@@ -210,29 +215,51 @@ async function executeToolCall(
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
 
-function truncateMessages(messages: any[], maxChars = 40000): any[] {
+function contentLength(content: unknown): number {
+  if (typeof content === "string") return content.length;
+  if (Array.isArray(content)) {
+    return content.reduce((sum, part: any) => {
+      if (part?.type === "text") return sum + String(part.text ?? "").length;
+      if (part?.type === "image_url") return sum + 750;
+      return sum + 250;
+    }, 0);
+  }
+  return 500;
+}
+
+function capContent(content: unknown): unknown {
+  if (typeof content === "string" && content.length > MAX_MESSAGE_CHARS) {
+    return content.slice(0, MAX_MESSAGE_CHARS) + "\n\n[... content truncated for runtime stability ...]";
+  }
+  if (Array.isArray(content)) {
+    let remainingText = MAX_MESSAGE_CHARS;
+    return content.map((part: any) => {
+      if (part?.type !== "text") return part;
+      const text = String(part.text ?? "");
+      const capped = text.slice(0, Math.max(0, remainingText));
+      remainingText -= capped.length;
+      return { ...part, text: capped.length < text.length ? capped + "\n\n[... attached text truncated ...]" : capped };
+    });
+  }
+  return content;
+}
+
+function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   // First, hard-cap each individual message to avoid single huge PDF blobs
-  const capped = messages.map((msg) => {
-    if (typeof msg.content === "string" && msg.content.length > 8000) {
-      return {
-        ...msg,
-        content: msg.content.slice(0, 8000) + "\n\n[... content truncated for context window ...]",
-      };
-    }
-    return msg;
-  });
+  const capped = messages.map((msg) => ({ ...msg, content: capContent(msg.content) }));
 
   // Then keep the most recent messages within total budget
   const result: any[] = [];
   let totalChars = 0;
   for (let i = capped.length - 1; i >= 0; i--) {
     const msg = capped[i];
-    const len = typeof msg.content === "string" ? msg.content.length : 2000;
-    if (totalChars + len > maxChars && result.length >= 2) break;
+    const len = contentLength(msg.content);
+    if (result.length >= MAX_CONTEXT_MESSAGES) break;
+    if (totalChars + len > maxChars && result.length >= 1) continue;
     result.unshift(msg);
     totalChars += len;
   }
-  return result;
+  return result.length ? result : capped.slice(-1);
 }
 
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
