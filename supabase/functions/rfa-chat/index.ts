@@ -397,7 +397,12 @@ serve(async (req) => {
     const { messages, conversationId } = body;
     const response = await callAIWithTools(messages, conversationId);
 
-    const streamBody = response.ok
+    if (!response.ok) {
+      try { await response.body?.cancel(); } catch {}
+      console.error("AI gateway error status:", response.status);
+    }
+
+    const streamBody = response.ok && response.body
       ? response.body
       : createErrorStream(response.status === 429
         ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
