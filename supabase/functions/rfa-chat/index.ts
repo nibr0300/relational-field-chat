@@ -270,6 +270,34 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   return result.length ? result : capped.slice(-1);
 }
 
+function sseJson(payload: unknown): Uint8Array {
+  return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function sseDone(): Uint8Array {
+  return encoder.encode("data: [DONE]\n\n");
+}
+
+function createErrorStream(message: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(sseJson({ choices: [{ delta: { content: message } }] }));
+      controller.enqueue(sseDone());
+      controller.close();
+    },
+  });
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
