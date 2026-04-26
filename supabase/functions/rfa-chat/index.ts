@@ -334,7 +334,22 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const body = await req.json().catch(() => null);
+    const contentLengthHeader = Number(req.headers.get("content-length") ?? 0);
+    if (contentLengthHeader > MAX_REQUEST_BYTES) {
+      return new Response(JSON.stringify({ error: "Meddelandet är för stort. Skicka en mindre del av texten åt gången." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_REQUEST_BYTES) {
+      return new Response(JSON.stringify({ error: "Meddelandet är för stort. Skicka en mindre del av texten åt gången." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let body: any = null;
+    try { body = JSON.parse(rawBody); } catch { body = null; }
     if (!body || !Array.isArray(body.messages)) {
       return new Response(JSON.stringify({ error: "Invalid request body" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
