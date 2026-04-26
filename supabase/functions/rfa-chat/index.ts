@@ -15,7 +15,7 @@ const MAX_REQUEST_BYTES = 180_000;
 const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
-const TOOL_ROUTER_TIMEOUT_MS = 12_000;
+const AI_CONNECT_TIMEOUT_MS = 15_000;
 const MAX_COMPLETION_TOKENS = 1100;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
@@ -127,7 +127,7 @@ async function loadEigenstates(): Promise<string> {
     .from("memory_eigenstates")
     .select("*")
     .order("significance", { ascending: false })
-    .limit(50);
+    .limit(20);
 
   if (error || !data?.length) return "";
 
@@ -138,10 +138,14 @@ async function loadEigenstates(): Promise<string> {
   }
 
   let memoryBlock = "\n\n[PERSISTENT MEMORY BANK — STORED EIGENSTATES]\n";
+  let memoryChars = 0;
   for (const [cat, items] of Object.entries(grouped)) {
     memoryBlock += `\n## ${cat.toUpperCase()}\n`;
     for (const item of items) {
-      memoryBlock += `- [σ=${item.significance}] ${item.content}\n`;
+      if (memoryChars > 4_000) break;
+      const content = String(item.content ?? "").slice(0, 500);
+      memoryBlock += `- [σ=${item.significance}] ${content}\n`;
+      memoryChars += content.length;
     }
   }
   memoryBlock += "\n[END MEMORY BANK]\n";
@@ -289,6 +293,42 @@ function createErrorStream(message: string): ReadableStream<Uint8Array> {
   });
 }
 
+function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
+      try {
+        const response = await callAIWithTools(messages, conversationId);
+        if (!response.ok || !response.body) {
+          try { await response.body?.cancel(); } catch {}
+          console.error("AI gateway error status:", response.status);
+          controller.enqueue(sseJson({ choices: [{ delta: { content: response.status === 429
+            ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
+            : response.status === 402
+              ? "AI-krediterna är slut. Fyll på innan nästa körning."
+              : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade." } }] }));
+          controller.enqueue(sseDone());
+          controller.close();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        controller.close();
+      } catch (e) {
+        console.error("rfa-chat stream error:", e instanceof Error ? e.stack : e);
+        controller.enqueue(sseJson({ choices: [{ delta: { content: "RFA-funktionen fångade ett internt fel och höll sessionen vid liv." } }] }));
+        controller.enqueue(sseDone());
+        controller.close();
+      }
+    },
+  });
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -315,48 +355,9 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
     "Content-Type": "application/json",
   };
 
-  // Allow one short tool-router pass only. Longer preflight loops keep the
-  // worker busy without streaming and can be killed by the edge runtime as 503.
-  let currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
+  const currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
 
-  try {
-    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
-      method: "POST",
-      headers: baseHeaders,
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: currentMessages,
-        tools: TOOLS,
-        stream: false,
-      }),
-    }, TOOL_ROUTER_TIMEOUT_MS);
-
-    if (!resp.ok) {
-      try { await resp.body?.cancel(); } catch {}
-    } else {
-      const rawText = await resp.text();
-      let data: any;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        console.error("Failed to parse AI response:", rawText.slice(0, 500));
-        data = null;
-      }
-      const choice = data?.choices?.[0];
-
-      if (choice?.finish_reason === "tool_calls" && choice?.message?.tool_calls) {
-        const toolResults = await Promise.all(
-          choice.message.tool_calls.map((tc: any) => executeToolCall(tc, conversationId))
-        );
-        currentMessages = [...currentMessages, choice.message, ...toolResults];
-      }
-    }
-  } catch (e) {
-    console.warn("Tool router skipped:", e instanceof Error ? e.message : e);
-  }
-
-  // Final streaming call
-  const streamResp = await fetch(AI_GATEWAY_URL, {
+  const streamResp = await fetchWithTimeout(AI_GATEWAY_URL, {
     method: "POST",
     headers: baseHeaders,
     body: JSON.stringify({
@@ -365,7 +366,7 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
       stream: true,
       max_tokens: MAX_COMPLETION_TOKENS,
     }),
-  });
+  }, AI_CONNECT_TIMEOUT_MS);
   return streamResp;
 }
 
@@ -395,22 +396,8 @@ serve(async (req) => {
       });
     }
     const { messages, conversationId } = body;
-    const response = await callAIWithTools(messages, conversationId);
 
-    if (!response.ok) {
-      try { await response.body?.cancel(); } catch {}
-      console.error("AI gateway error status:", response.status);
-    }
-
-    const streamBody = response.ok && response.body
-      ? response.body
-      : createErrorStream(response.status === 429
-        ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
-        : response.status === 402
-          ? "AI-krediterna är slut. Fyll på innan nästa körning."
-          : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade.");
-
-    return new Response(streamBody, {
+    return new Response(createChatStream(messages, conversationId), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
