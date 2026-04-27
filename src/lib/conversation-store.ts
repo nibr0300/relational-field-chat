@@ -84,8 +84,11 @@ export async function autoTitleConversation(conversationId: string, firstUserMsg
 export async function uploadToStorage(file: File): Promise<string> {
   const ext = file.name.split(".").pop() || "bin";
   const path = `${crypto.randomUUID()}.${ext}`;
+  const lower = file.name.toLowerCase();
+  const isMd = lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".mdx");
+  const contentType = file.type || (isMd ? "text/markdown" : "application/octet-stream");
   const { error } = await supabase.storage.from("chat-images").upload(path, file, {
-    contentType: file.type,
+    contentType,
   });
   if (error) throw error;
   const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
