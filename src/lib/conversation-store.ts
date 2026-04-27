@@ -8,6 +8,14 @@ export interface Conversation {
   updated_at: string;
 }
 
+const MAX_LOADED_MESSAGES = 40;
+const MAX_RENDERED_CONTENT_CHARS = 12_000;
+
+function capStoredContent(content: string): string {
+  if (content.length <= MAX_RENDERED_CONTENT_CHARS) return content;
+  return `${content.slice(0, MAX_RENDERED_CONTENT_CHARS)}\n\n[... äldre meddelande trunkerat i vyn för stabilitet ...]`;
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   const { data, error } = await supabase
     .from("conversations")
@@ -46,11 +54,12 @@ export async function loadMessages(conversationId: string): Promise<Msg[]> {
     .from("messages")
     .select("*")
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(MAX_LOADED_MESSAGES);
   if (error) throw error;
-  return (data ?? []).map((m: any) => ({
+  return [...(data ?? [])].reverse().map((m: any) => ({
     role: m.role as "user" | "assistant",
-    content: m.content,
+    content: capStoredContent(m.content ?? ""),
     image_url: m.image_url ?? undefined,
     file_url: m.file_url ?? undefined,
     file_name: m.file_name ?? undefined,
