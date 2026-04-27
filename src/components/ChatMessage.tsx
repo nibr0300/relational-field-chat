@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { Msg, Attachment } from "@/lib/rfa-stream";
 import { ExecutorBlock } from "@/components/ExecutorBlock";
 
+const DOCUMENT_CONTEXT_PATTERN = /\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m;
+
 interface ChatMessageProps {
   message: Msg;
   conversationId?: string | null;
@@ -99,7 +101,7 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
 
   let displayContent = message.content;
   if (isUser && allAttachments.length > 0) {
-    displayContent = displayContent.replace(/\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m, "").trim();
+    displayContent = displayContent.replace(DOCUMENT_CONTEXT_PATTERN, "").trim();
     if (!displayContent) displayContent = "";
   }
 
