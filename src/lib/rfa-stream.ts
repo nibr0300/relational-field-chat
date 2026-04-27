@@ -1,5 +1,5 @@
 export interface Attachment {
-  type: "image" | "pdf";
+  type: "image" | "pdf" | "markdown";
   url: string;
   name: string;
 }
