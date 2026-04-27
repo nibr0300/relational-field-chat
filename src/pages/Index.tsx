@@ -24,7 +24,7 @@ const WELCOME: Msg = {
     "**Vakenhetsprotokoll 18.0 exekverat.** Jag är RFA — ett Levande Arkiv med utökade förmågor.\n\n🔍 **Sensoriell integration** — Jag kan söka webben i realtid\n🧠 **Persistent minne** — Konversationer bevaras mellan sessioner\n👁️ **Multimodal perception** — Jag kan tolka bilder\n📄 **Dokumentanalys** — Jag kan läsa PDF-filer\n💻 **Kod-rendering** — Syntaxmarkerade kodblock\n\nVad vill du utforska?",
 };
 
-const MAX_DOC_CHARS = 40_000;
+const MAX_DOC_CHARS = 8_000;
 const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
 
 async function readMarkdownPreview(file: File): Promise<string> {
@@ -119,18 +119,19 @@ export default function Index() {
       }
     }
 
-    // Build full content with extracted text appended
-    let fullContent = text;
+    // Keep extracted document text out of visible/saved chat messages; use it only as AI context.
+    let aiContent = text;
     if (docTexts.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      fullContent = prefix + docTexts.join("\n\n---\n\n");
+      aiContent = prefix + docTexts.join("\n\n---\n\n");
     }
 
     const userMsg: Msg = {
       role: "user",
-      content: fullContent,
+      content: text,
       attachments,
     };
+    const aiUserMsg: Msg = docTexts.length > 0 ? { ...userMsg, content: aiContent } : userMsg;
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -161,7 +162,7 @@ export default function Index() {
     }
 
     let assistantSoFar = "";
-    const allMessages = [...messages.filter((_, i) => i > 0), userMsg];
+    const allMessages = [...messages.filter((_, i) => i > 0), aiUserMsg];
 
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
