@@ -41,8 +41,17 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
     const newFiles: AttachedFile[] = [];
     for (const file of selected) {
+      const lower = file.name.toLowerCase();
+      const isMarkdown =
+        file.type === "text/markdown" ||
+        file.type === "text/x-markdown" ||
+        lower.endsWith(".md") ||
+        lower.endsWith(".markdown") ||
+        lower.endsWith(".mdx");
       if (file.type === "application/pdf") {
         newFiles.push({ file, type: "pdf" });
+      } else if (isMarkdown) {
+        newFiles.push({ file, type: "markdown" });
       } else if (file.type.startsWith("image/")) {
         const preview = await new Promise<string>((resolve) => {
           const reader = new FileReader();
