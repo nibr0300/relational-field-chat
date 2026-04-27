@@ -80,7 +80,7 @@ export default function Index() {
 
   const handleSend = async (text: string, attachedFiles: AttachedFile[]) => {
     const attachments: Attachment[] = [];
-    const pdfTexts: string[] = [];
+    const docTexts: string[] = [];
 
     // Process all files in parallel
     if (attachedFiles.length > 0) {
@@ -88,18 +88,20 @@ export default function Index() {
         const results = await Promise.all(
           attachedFiles.map(async (af) => {
             const url = await uploadToStorage(af.file);
-            let pdfText: string | undefined;
+            let docText: string | undefined;
             if (af.type === "pdf") {
-              pdfText = await extractPdfText(af.file);
+              docText = await extractPdfText(af.file);
+            } else if (af.type === "markdown") {
+              docText = await af.file.text();
             }
-            return { type: af.type, url, name: af.file.name, pdfText };
+            return { type: af.type, url, name: af.file.name, docText };
           })
         );
 
         for (const r of results) {
           attachments.push({ type: r.type, url: r.url, name: r.name });
-          if (r.pdfText) {
-            pdfTexts.push(`[Bifogat dokument: ${r.name}]\n\n${r.pdfText}`);
+          if (r.docText) {
+            docTexts.push(`[Bifogat dokument: ${r.name}]\n\n${r.docText}`);
           }
         }
       } catch (e) {
@@ -109,11 +111,11 @@ export default function Index() {
       }
     }
 
-    // Build full content with PDF text appended
+    // Build full content with extracted text appended
     let fullContent = text;
-    if (pdfTexts.length > 0) {
+    if (docTexts.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      fullContent = prefix + pdfTexts.join("\n\n---\n\n");
+      fullContent = prefix + docTexts.join("\n\n---\n\n");
     }
 
     const userMsg: Msg = {
