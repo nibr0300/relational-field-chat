@@ -83,6 +83,7 @@ export default function Index() {
     const docTexts: string[] = [];
 
     // Process all files in parallel
+    const MAX_DOC_CHARS = 40_000; // hård cap per dokument för att undvika edge-payload-fel
     if (attachedFiles.length > 0) {
       try {
         const results = await Promise.all(
@@ -93,6 +94,9 @@ export default function Index() {
               docText = await extractPdfText(af.file);
             } else if (af.type === "markdown") {
               docText = await af.file.text();
+            }
+            if (docText && docText.length > MAX_DOC_CHARS) {
+              docText = docText.slice(0, MAX_DOC_CHARS) + "\n\n[... dokument trunkerat för bearbetning ...]";
             }
             return { type: af.type, url, name: af.file.name, docText };
           })
