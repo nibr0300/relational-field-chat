@@ -3,7 +3,7 @@ import { Send, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 
 interface AttachedFile {
   file: File;
-  type: "image" | "pdf";
+  type: "image" | "pdf" | "markdown";
   preview?: string; // data URL for images
 }
 
