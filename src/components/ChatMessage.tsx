@@ -7,6 +7,7 @@ import type { Msg, Attachment } from "@/lib/rfa-stream";
 import { ExecutorBlock } from "@/components/ExecutorBlock";
 
 const DOCUMENT_CONTEXT_PATTERN = /\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m;
+const MAX_MARKDOWN_RENDER_CHARS = 12_000;
 
 interface ChatMessageProps {
   message: Msg;
@@ -117,6 +118,10 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
         {allAttachments.length > 0 && <AttachmentsList attachments={allAttachments} />}
         {isUser ? (
           displayContent ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p> : null
+        ) : message.content.length > MAX_MARKDOWN_RENDER_CHARS ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {`${message.content.slice(0, MAX_MARKDOWN_RENDER_CHARS)}\n\n[... svar trunkerat i vyn för stabilitet ...]`}
+          </p>
         ) : (
           <div className="prose prose-sm prose-invert max-w-none text-foreground [&_p]:text-foreground [&_li]:text-foreground [&_strong]:text-primary [&_h1]:text-primary [&_h2]:text-primary [&_h3]:text-primary/80 [&_a]:text-primary">
             <ReactMarkdown
