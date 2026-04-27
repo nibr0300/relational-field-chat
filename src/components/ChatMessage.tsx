@@ -61,16 +61,16 @@ function CodeBlock({ language, children, conversationId }: { language: string; c
 
 function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
   const images = attachments.filter((a) => a.type === "image");
-  const pdfs = attachments.filter((a) => a.type === "pdf");
+  const docs = attachments.filter((a) => a.type === "pdf" || a.type === "markdown");
 
   return (
     <>
       {images.map((a, i) => (
         <img key={`img-${i}`} src={a.url} alt={a.name} className="max-w-full max-h-64 rounded-md mb-2 border border-border" />
       ))}
-      {pdfs.map((a, i) => (
+      {docs.map((a, i) => (
         <a
-          key={`pdf-${i}`}
+          key={`doc-${i}`}
           href={a.url}
           target="_blank"
           rel="noopener noreferrer"
@@ -78,6 +78,7 @@ function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
         >
           <FileText className="w-5 h-5 text-primary" />
           <span className="text-xs text-foreground truncate max-w-[200px]">{a.name}</span>
+          <span className="text-[10px] uppercase text-muted-foreground">{a.type === "markdown" ? "MD" : "PDF"}</span>
           <ExternalLink className="w-3 h-3 text-muted-foreground" />
         </a>
       ))}

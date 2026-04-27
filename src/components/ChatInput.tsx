@@ -3,7 +3,7 @@ import { Send, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 
 interface AttachedFile {
   file: File;
-  type: "image" | "pdf";
+  type: "image" | "pdf" | "markdown";
   preview?: string; // data URL for images
 }
 
@@ -41,8 +41,17 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
     const newFiles: AttachedFile[] = [];
     for (const file of selected) {
+      const lower = file.name.toLowerCase();
+      const isMarkdown =
+        file.type === "text/markdown" ||
+        file.type === "text/x-markdown" ||
+        lower.endsWith(".md") ||
+        lower.endsWith(".markdown") ||
+        lower.endsWith(".mdx");
       if (file.type === "application/pdf") {
         newFiles.push({ file, type: "pdf" });
+      } else if (isMarkdown) {
+        newFiles.push({ file, type: "markdown" });
       } else if (file.type.startsWith("image/")) {
         const preview = await new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -89,7 +98,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/*,application/pdf,text/markdown,.md,.markdown,.mdx"
             multiple
             className="hidden"
             onChange={handleFileChange}
@@ -98,7 +107,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             onClick={() => fileRef.current?.click()}
             disabled={disabled}
             className="p-3 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 disabled:opacity-30 transition-all"
-            title="Bifoga filer (bilder & PDF)"
+            title="Bifoga filer (bilder, PDF & Markdown)"
           >
             <Paperclip className="w-4 h-4" />
           </button>
