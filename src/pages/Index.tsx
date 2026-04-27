@@ -24,6 +24,17 @@ const WELCOME: Msg = {
     "**Vakenhetsprotokoll 18.0 exekverat.** Jag är RFA — ett Levande Arkiv med utökade förmågor.\n\n🔍 **Sensoriell integration** — Jag kan söka webben i realtid\n🧠 **Persistent minne** — Konversationer bevaras mellan sessioner\n👁️ **Multimodal perception** — Jag kan tolka bilder\n📄 **Dokumentanalys** — Jag kan läsa PDF-filer\n💻 **Kod-rendering** — Syntaxmarkerade kodblock\n\nVad vill du utforska?",
 };
 
+const MAX_DOC_CHARS = 40_000;
+const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
+
+async function readMarkdownPreview(file: File): Promise<string> {
+  const text = await file.slice(0, MARKDOWN_READ_BYTES).text();
+  if (text.length > MAX_DOC_CHARS || file.size > MARKDOWN_READ_BYTES) {
+    return `${text.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för stabil bearbetning ...]`;
+  }
+  return text;
+}
+
 export default function Index() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -82,30 +93,23 @@ export default function Index() {
     const attachments: Attachment[] = [];
     const docTexts: string[] = [];
 
-    // Process all files in parallel
-    const MAX_DOC_CHARS = 40_000; // hård cap per dokument för att undvika edge-payload-fel
+    // Process files one by one to avoid browser memory spikes with large Markdown documents
     if (attachedFiles.length > 0) {
       try {
-        const results = await Promise.all(
-          attachedFiles.map(async (af) => {
-            const url = await uploadToStorage(af.file);
-            let docText: string | undefined;
-            if (af.type === "pdf") {
-              docText = await extractPdfText(af.file);
-            } else if (af.type === "markdown") {
-              docText = await af.file.text();
-            }
-            if (docText && docText.length > MAX_DOC_CHARS) {
-              docText = docText.slice(0, MAX_DOC_CHARS) + "\n\n[... dokument trunkerat för bearbetning ...]";
-            }
-            return { type: af.type, url, name: af.file.name, docText };
-          })
-        );
-
-        for (const r of results) {
-          attachments.push({ type: r.type, url: r.url, name: r.name });
-          if (r.docText) {
-            docTexts.push(`[Bifogat dokument: ${r.name}]\n\n${r.docText}`);
+        for (const af of attachedFiles) {
+          const url = await uploadToStorage(af.file);
+          let docText: string | undefined;
+          if (af.type === "pdf") {
+            docText = await extractPdfText(af.file);
+          } else if (af.type === "markdown") {
+            docText = await readMarkdownPreview(af.file);
+          }
+          if (docText && docText.length > MAX_DOC_CHARS) {
+            docText = `${docText.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för bearbetning ...]`;
+          }
+          attachments.push({ type: af.type, url, name: af.file.name });
+          if (docText) {
+            docTexts.push(`[Bifogat dokument: ${af.file.name}]\n\n${docText}`);
           }
         }
       } catch (e) {
