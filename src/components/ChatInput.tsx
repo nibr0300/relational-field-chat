@@ -98,7 +98,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/*,application/pdf,text/markdown,.md,.markdown,.mdx"
             multiple
             className="hidden"
             onChange={handleFileChange}
@@ -107,7 +107,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             onClick={() => fileRef.current?.click()}
             disabled={disabled}
             className="p-3 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/30 disabled:opacity-30 transition-all"
-            title="Bifoga filer (bilder & PDF)"
+            title="Bifoga filer (bilder, PDF & Markdown)"
           >
             <Paperclip className="w-4 h-4" />
           </button>
