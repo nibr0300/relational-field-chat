@@ -514,6 +514,8 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
       messages: currentMessages,
       stream: true,
       max_tokens: MAX_COMPLETION_TOKENS,
+      tools: TOOLS,
+      tool_choice: "auto",
     }),
   }, AI_CONNECT_TIMEOUT_MS);
   return streamResp;

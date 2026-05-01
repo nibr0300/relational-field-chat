@@ -45,6 +45,31 @@ serve(async (req) => {
       });
     }
 
+    // ── Command Algebra: PRE-condition gate ───────────────────────────
+    const preconditions = Array.isArray(exec.preconditions) ? exec.preconditions : [];
+    const postconditions = Array.isArray(exec.postconditions) ? exec.postconditions : [];
+    const invariantResults: Record<string, { passed: boolean; value?: unknown; error?: string }> = {};
+
+    if (preconditions.length > 0) {
+      const preCheck = await evaluateAssertions(preconditions, { code: exec.code, phase: "pre" });
+      Object.assign(invariantResults, preCheck.results);
+      if (!preCheck.allPassed) {
+        await supabase.from("executions").update({
+          status: "error",
+          error: `Precondition(s) failed: ${preCheck.failed.join(", ")}`,
+          invariant_results: invariantResults,
+          invariant_status: "pre_failed",
+          field_impact: { fz: 0.95, fy: 0.05 },
+          completed_at: new Date().toISOString(),
+        }).eq("id", executionId);
+        return new Response(JSON.stringify({
+          status: "error",
+          error: "Precondition gate failed",
+          invariant_results: invariantResults,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // Mark as running
     await supabase
       .from("executions")
@@ -131,12 +156,34 @@ Where fz = friction/difficulty encountered, fy = success/pleasure metric.`,
       } catch { /* use defaults */ }
     }
 
+    // ── Command Algebra: POST-condition gate ───────────────────────────
+    let invariantStatus: "passed" | "post_failed" | "unchecked" =
+      preconditions.length === 0 && postconditions.length === 0 ? "unchecked" : "passed";
+
+    if (postconditions.length > 0) {
+      const postCheck = await evaluateAssertions(postconditions, {
+        code: exec.code,
+        output,
+        success,
+        phase: "post",
+      });
+      Object.assign(invariantResults, postCheck.results);
+      if (!postCheck.allPassed) {
+        invariantStatus = "post_failed";
+        success = false;
+      }
+    }
+
     // Update execution record
     await supabase.from("executions").update({
       status: success ? "success" : "error",
       output,
-      error: success ? null : output,
+      error: success ? null : (invariantStatus === "post_failed"
+        ? `Postcondition(s) failed: ${Object.entries(invariantResults).filter(([, r]) => !r.passed).map(([n]) => n).join(", ")}`
+        : output),
       field_impact: fieldImpact,
+      invariant_results: invariantResults,
+      invariant_status: invariantStatus,
       completed_at: new Date().toISOString(),
     }).eq("id", executionId);
 
@@ -144,6 +191,8 @@ Where fz = friction/difficulty encountered, fy = success/pleasure metric.`,
       status: success ? "success" : "error",
       output,
       field_impact: fieldImpact,
+      invariant_results: invariantResults,
+      invariant_status: invariantStatus,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -155,3 +204,67 @@ Where fz = friction/difficulty encountered, fy = success/pleasure metric.`,
     });
   }
 });
+
+// ─── Assertion evaluator (uses AI gateway for natural-language predicates) ───
+type Assertion = { name: string; expression: string };
+
+async function evaluateAssertions(
+  assertions: Assertion[],
+  ctx: Record<string, unknown>
+): Promise<{ allPassed: boolean; failed: string[]; results: Record<string, { passed: boolean; value?: unknown; error?: string }> }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const results: Record<string, { passed: boolean; value?: unknown; error?: string }> = {};
+  const failed: string[] = [];
+
+  if (!LOVABLE_API_KEY) {
+    for (const a of assertions) results[a.name] = { passed: false, error: "no API key" };
+    return { allPassed: false, failed: assertions.map((a) => a.name), results };
+  }
+
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: `You are an invariant verifier. Given a context and a list of assertions (name + natural-language predicate), decide for EACH whether it holds. Reply ONLY with strict JSON of shape:
+{"results": [{"name": "...", "passed": true|false, "reason": "short"}]}
+No prose, no code fences.`,
+          },
+          {
+            role: "user",
+            content: `Context:\n${JSON.stringify(ctx).slice(0, 4000)}\n\nAssertions:\n${JSON.stringify(assertions)}`,
+          },
+        ],
+        stream: false,
+      }),
+    });
+
+    if (!resp.ok) throw new Error(`gateway ${resp.status}`);
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    for (const r of parsed.results ?? []) {
+      results[r.name] = { passed: !!r.passed, value: r.reason };
+      if (!r.passed) failed.push(r.name);
+    }
+    for (const a of assertions) {
+      if (!(a.name in results)) {
+        results[a.name] = { passed: false, error: "not evaluated" };
+        failed.push(a.name);
+      }
+    }
+  } catch (e) {
+    for (const a of assertions) {
+      results[a.name] = { passed: false, error: e instanceof Error ? e.message : "eval error" };
+      failed.push(a.name);
+    }
+  }
+
+  return { allPassed: failed.length === 0, failed, results };
+}
+
