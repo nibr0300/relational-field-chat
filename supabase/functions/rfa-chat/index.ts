@@ -366,6 +366,10 @@ async function executeToolCall(
     result = await executeWebSearch(args.query);
   } else if (name === "save_eigenstate") {
     result = await saveEigenstate(args.content, args.category, args.significance, conversationId);
+  } else if (name === "record_friction") {
+    result = await recordFriction(args.description, args.category, args.resistance_strength);
+  } else if (name === "crystallize_pattern") {
+    result = await crystallizePattern(args.pattern_name, args.description, args.stability, args.related_categories ?? []);
   } else {
     result = `Unknown tool: ${name}`;
   }
