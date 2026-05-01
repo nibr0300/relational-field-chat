@@ -45,6 +45,31 @@ serve(async (req) => {
       });
     }
 
+    // ── Command Algebra: PRE-condition gate ───────────────────────────
+    const preconditions = Array.isArray(exec.preconditions) ? exec.preconditions : [];
+    const postconditions = Array.isArray(exec.postconditions) ? exec.postconditions : [];
+    const invariantResults: Record<string, { passed: boolean; value?: unknown; error?: string }> = {};
+
+    if (preconditions.length > 0) {
+      const preCheck = await evaluateAssertions(preconditions, { code: exec.code, phase: "pre" });
+      Object.assign(invariantResults, preCheck.results);
+      if (!preCheck.allPassed) {
+        await supabase.from("executions").update({
+          status: "error",
+          error: `Precondition(s) failed: ${preCheck.failed.join(", ")}`,
+          invariant_results: invariantResults,
+          invariant_status: "pre_failed",
+          field_impact: { fz: 0.95, fy: 0.05 },
+          completed_at: new Date().toISOString(),
+        }).eq("id", executionId);
+        return new Response(JSON.stringify({
+          status: "error",
+          error: "Precondition gate failed",
+          invariant_results: invariantResults,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // Mark as running
     await supabase
       .from("executions")
