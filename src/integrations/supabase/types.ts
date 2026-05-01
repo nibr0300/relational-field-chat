@@ -91,6 +91,33 @@ export type Database = {
           },
         ]
       }
+      memory_corona: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          significance: number
+          source_conversation_id: string | null
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          id?: string
+          significance?: number
+          source_conversation_id?: string | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          significance?: number
+          source_conversation_id?: string | null
+        }
+        Relationships: []
+      }
       memory_eigenstates: {
         Row: {
           category: string
@@ -125,6 +152,108 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      memory_friction: {
+        Row: {
+          category: string
+          created_at: string
+          description: string
+          first_seen: string
+          id: string
+          last_seen: string
+          occurrence_count: number
+          resistance_strength: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description: string
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          occurrence_count?: number
+          resistance_strength?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          occurrence_count?: number
+          resistance_strength?: number
+        }
+        Relationships: []
+      }
+      memory_limbus: {
+        Row: {
+          category: string
+          created_at: string
+          first_seen: string
+          id: string
+          key_terms: string[] | null
+          last_seen: string
+          mean_significance: number
+          observation_count: number
+          summary: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          first_seen?: string
+          id?: string
+          key_terms?: string[] | null
+          last_seen?: string
+          mean_significance?: number
+          observation_count?: number
+          summary: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          first_seen?: string
+          id?: string
+          key_terms?: string[] | null
+          last_seen?: string
+          mean_significance?: number
+          observation_count?: number
+          summary?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      memory_vortex: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          pattern_name: string
+          related_categories: string[] | null
+          stability: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          pattern_name: string
+          related_categories?: string[] | null
+          stability?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          pattern_name?: string
+          related_categories?: string[] | null
+          stability?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       messages: {
         Row: {
