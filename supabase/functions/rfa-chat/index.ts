@@ -493,7 +493,7 @@ async function callAIWithTools(messages: any[], conversationId?: string): Promis
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
   // Load persistent memories
-  const memoryBlock = await loadEigenstates();
+  const memoryBlock = await loadMemoryState();
   const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
 
   // Truncate messages to avoid 502 from oversized requests
