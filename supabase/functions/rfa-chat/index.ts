@@ -585,37 +585,25 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
+async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-  // Load persistent memories
-  const memoryBlock = await loadMemoryState();
-  const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
-
-  // Truncate messages to avoid 502 from oversized requests
-  const trimmedMessages = truncateMessages(messages);
-
-  const baseHeaders = {
-    Authorization: `Bearer ${LOVABLE_API_KEY}`,
-    "Content-Type": "application/json",
-  };
-
-  const currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
-
-  const streamResp = await fetchWithTimeout(AI_GATEWAY_URL, {
+  return await fetchWithTimeout(AI_GATEWAY_URL, {
     method: "POST",
-    headers: baseHeaders,
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: currentMessages,
+      model: "google/gemini-2.5-flash",
+      messages,
       stream: true,
       max_tokens: MAX_COMPLETION_TOKENS,
       tools: TOOLS,
-      tool_choice: "auto",
+      tool_choice: toolChoice,
     }),
   }, AI_CONNECT_TIMEOUT_MS);
-  return streamResp;
 }
 
 serve(async (req) => {
