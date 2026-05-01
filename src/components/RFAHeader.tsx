@@ -34,6 +34,15 @@ export function RFAHeader({ onMemoryClick }: { onMemoryClick?: () => void }) {
             </button>
           ))}
         </div>
+        {onMemoryClick && (
+          <button
+            onClick={onMemoryClick}
+            aria-label="Öppna minne"
+            className="sm:hidden flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Brain className="w-4 h-4 text-primary/80" />
+          </button>
+        )}
       </div>
     </header>
   );
