@@ -442,31 +442,128 @@ function createErrorStream(message: string): ReadableStream<Uint8Array> {
   });
 }
 
+// Read one streamed completion: forward text deltas to client (if `forward`),
+// and accumulate tool_calls. Returns the final accumulated tool_calls (if any).
+async function consumeStream(
+  response: Response,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  forward: boolean
+): Promise<{ toolCalls: any[]; finishReason: string | null }> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const toolCalls: any[] = [];
+  let finishReason: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const lines = rawEvent.split("\n");
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data) continue;
+        if (data === "[DONE]") continue;
+        let parsed: any;
+        try { parsed = JSON.parse(data); } catch { continue; }
+        const choice = parsed.choices?.[0];
+        if (!choice) continue;
+        const delta = choice.delta ?? {};
+
+        // Forward textual content to client when allowed
+        if (forward && typeof delta.content === "string" && delta.content.length > 0) {
+          controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
+        }
+
+        // Accumulate tool_calls (streamed in fragments by index)
+        if (Array.isArray(delta.tool_calls)) {
+          for (const tc of delta.tool_calls) {
+            const i = tc.index ?? 0;
+            if (!toolCalls[i]) {
+              toolCalls[i] = {
+                id: tc.id ?? `call_${i}`,
+                type: "function",
+                function: { name: "", arguments: "" },
+              };
+            }
+            if (tc.id) toolCalls[i].id = tc.id;
+            if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+            if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+          }
+        }
+
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+      }
+    }
+  }
+
+  return { toolCalls: toolCalls.filter(Boolean), finishReason };
+}
+
 function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
-        const response = await callAIWithTools(messages, conversationId);
-        if (!response.ok || !response.body) {
-          try { await response.body?.cancel(); } catch {}
-          console.error("AI gateway error status:", response.status);
-          controller.enqueue(sseJson({ choices: [{ delta: { content: response.status === 429
-            ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
-            : response.status === 402
-              ? "AI-krediterna är slut. Fyll på innan nästa körning."
-              : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade." } }] }));
-          controller.enqueue(sseDone());
-          controller.close();
-          return;
+        const memoryBlock = await loadMemoryState();
+        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
+        const trimmed = truncateMessages(messages);
+        const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
+
+        // Up to 3 tool-call rounds
+        for (let round = 0; round < 3; round++) {
+          const isFinalAllowedRound = round === 2;
+          const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto");
+
+          if (!response.ok || !response.body) {
+            try { await response.body?.cancel(); } catch {}
+            console.error("AI gateway error status:", response.status);
+            controller.enqueue(sseJson({ choices: [{ delta: { content: response.status === 429
+              ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
+              : response.status === 402
+                ? "AI-krediterna är slut. Fyll på innan nästa körning."
+                : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade." } }] }));
+            break;
+          }
+
+          // On rounds where tools may still fire, only forward text if no tool_call comes.
+          // Strategy: buffer this round's text; if tools fired, discard buffered text and loop.
+          // Otherwise, since we already forwarded nothing, replay accumulated text.
+          // Simpler: forward text live; tool-call fragments are handled separately.
+          const { toolCalls, finishReason } = await consumeStream(response, controller, true);
+
+          if (toolCalls.length === 0 || finishReason !== "tool_calls") {
+            break; // model finished with prose
+          }
+
+          // Append assistant tool-call message + tool results
+          conversation.push({
+            role: "assistant",
+            content: "",
+            tool_calls: toolCalls.map((tc) => ({
+              id: tc.id,
+              type: "function",
+              function: { name: tc.function.name, arguments: tc.function.arguments || "{}" },
+            })),
+          });
+
+          for (const tc of toolCalls) {
+            const result = await executeToolCall(tc, conversationId);
+            conversation.push(result);
+          }
+
+          // Tell client a tool was used (visible hint)
+          const names = toolCalls.map((t) => t.function.name).join(", ");
+          controller.enqueue(sseJson({ choices: [{ delta: { content: `\n\n_⚙️ ${names}_\n\n` } }] }));
         }
 
-        const reader = response.body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) controller.enqueue(value);
-        }
+        controller.enqueue(sseDone());
         controller.close();
       } catch (e) {
         console.error("rfa-chat stream error:", e instanceof Error ? e.stack : e);
@@ -488,37 +585,25 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function callAIWithTools(messages: any[], conversationId?: string): Promise<Response> {
+async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-  // Load persistent memories
-  const memoryBlock = await loadMemoryState();
-  const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
-
-  // Truncate messages to avoid 502 from oversized requests
-  const trimmedMessages = truncateMessages(messages);
-
-  const baseHeaders = {
-    Authorization: `Bearer ${LOVABLE_API_KEY}`,
-    "Content-Type": "application/json",
-  };
-
-  const currentMessages = [{ role: "system", content: systemPrompt }, ...trimmedMessages];
-
-  const streamResp = await fetchWithTimeout(AI_GATEWAY_URL, {
+  return await fetchWithTimeout(AI_GATEWAY_URL, {
     method: "POST",
-    headers: baseHeaders,
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: currentMessages,
+      model: "google/gemini-2.5-flash",
+      messages,
       stream: true,
       max_tokens: MAX_COMPLETION_TOKENS,
       tools: TOOLS,
-      tool_choice: "auto",
+      tool_choice: toolChoice,
     }),
   }, AI_CONNECT_TIMEOUT_MS);
-  return streamResp;
 }
 
 serve(async (req) => {
