@@ -45,8 +45,12 @@ export type Database = {
           field_impact: Json | null
           id: string
           intent: string | null
+          invariant_results: Json
+          invariant_status: string
           language: string
           output: string | null
+          postconditions: Json
+          preconditions: Json
           safety_score: number
           script_id: string
           status: string
@@ -60,8 +64,12 @@ export type Database = {
           field_impact?: Json | null
           id?: string
           intent?: string | null
+          invariant_results?: Json
+          invariant_status?: string
           language?: string
           output?: string | null
+          postconditions?: Json
+          preconditions?: Json
           safety_score?: number
           script_id?: string
           status?: string
@@ -75,8 +83,12 @@ export type Database = {
           field_impact?: Json | null
           id?: string
           intent?: string | null
+          invariant_results?: Json
+          invariant_status?: string
           language?: string
           output?: string | null
+          postconditions?: Json
+          preconditions?: Json
           safety_score?: number
           script_id?: string
           status?: string
