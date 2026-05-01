@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem } from "lucide-react";
+import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem } from "lucide-react";
 import {
   listEigenstates, deleteEigenstate,
   listCorona, deleteCorona,
@@ -30,7 +30,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("vortex");
+  const [tab, setTab] = useState<Tab | null>(null);
   const [loading, setLoading] = useState(false);
   const [vortex, setVortex] = useState<VortexItem[]>([]);
   const [friction, setFriction] = useState<FrictionItem[]>([]);
@@ -40,6 +40,7 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
 
   useEffect(() => {
     if (!isOpen) return;
+    setTab(null);
     setLoading(true);
     Promise.all([
       listVortex().then(setVortex).catch(() => {}),
@@ -57,6 +58,8 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     corona: corona.length,
     legacy: legacy.length,
   };
+
+  const selectedTab = tab ? TABS.find((t) => t.id === tab) : null;
 
   const wrap = async (fn: () => Promise<void>) => {
     try { await fn(); toast.success("Raderat"); } catch { toast.error("Kunde inte radera"); }
@@ -83,34 +86,55 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           </button>
         </div>
 
-        <div className="flex border-b border-border overflow-x-auto scrollbar-thin">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = t.id === tab;
-            return (
+        {tab === null ? (
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 border-b border-border">
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
+                  className="flex sm:flex-col items-center sm:items-start gap-2 px-3 py-2.5 rounded-lg border border-border bg-background/60 text-left hover:border-primary/40 hover:bg-secondary/60 transition-colors"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0 text-primary" />
+                    <span className="text-sm text-foreground truncate">{t.label}</span>
+                  </span>
+                  <span className="ml-auto sm:ml-0 text-xs text-muted-foreground">{counts[t.id]} anteckningar</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
               <button
-                key={t.id}
-                onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
-                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
-                  active
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
+                onClick={(e) => { e.stopPropagation(); setTab(null); }}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
               >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{t.label}</span>
-                <span className="text-xs opacity-60">({counts[t.id]})</span>
+                <ArrowLeft className="w-4 h-4" />
+                Flikar
               </button>
-            );
-          })}
-        </div>
-
-        <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border/50">
-          {TABS.find((t) => t.id === tab)?.description}
-        </div>
+              {selectedTab && (
+                <div className="flex items-center gap-1.5 min-w-0 text-sm text-primary">
+                  <selectedTab.icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{selectedTab.label}</span>
+                  <span className="text-xs opacity-60">({counts[selectedTab.id]})</span>
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border/50">
+              {selectedTab?.description}
+            </div>
+          </>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
           {loading && <p className="text-muted-foreground text-center py-8">Laddar minnen…</p>}
+
+          {!loading && tab === null && (
+            <Empty icon={Brain} text="Välj en minnesflik för att öppna dess anteckningar." />
+          )}
 
           {!loading && tab === "vortex" && vortex.length === 0 && (
             <Empty icon={Gem} text="Inga eviga mönster har kristalliserats ännu." />
