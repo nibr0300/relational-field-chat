@@ -90,15 +90,15 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
+                onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm whitespace-nowrap border-b-2 transition-colors ${
                   active
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                {t.label}
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{t.label}</span>
                 <span className="text-xs opacity-60">({counts[t.id]})</span>
               </button>
             );
