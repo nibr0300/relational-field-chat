@@ -178,6 +178,8 @@ export default function Index() {
       console.error("Failed to save message:", e);
     }
 
+    const finalConvId = convId;
+
     // ─── TÄNKAR-HATTEN (RAAP) ───────────────────────────────────
     const auto = shouldWearHat(text);
     const wearHat = opts.hat || auto.wear;
