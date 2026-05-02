@@ -419,6 +419,158 @@ export type Database = {
           },
         ]
       }
+      raap_episodes: {
+        Row: {
+          action: string | null
+          actual_outcome: string | null
+          confidence: number | null
+          created_at: string
+          discrepancy: number | null
+          expected_outcome: string | null
+          id: string
+          phase: string
+          reflection: string | null
+          run_id: string
+          step_index: number
+          sub_goal: string | null
+        }
+        Insert: {
+          action?: string | null
+          actual_outcome?: string | null
+          confidence?: number | null
+          created_at?: string
+          discrepancy?: number | null
+          expected_outcome?: string | null
+          id?: string
+          phase: string
+          reflection?: string | null
+          run_id: string
+          step_index: number
+          sub_goal?: string | null
+        }
+        Update: {
+          action?: string | null
+          actual_outcome?: string | null
+          confidence?: number | null
+          created_at?: string
+          discrepancy?: number | null
+          expected_outcome?: string | null
+          id?: string
+          phase?: string
+          reflection?: string | null
+          run_id?: string
+          step_index?: number
+          sub_goal?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raap_episodes_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "raap_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      raap_heuristics: {
+        Row: {
+          created_at: string
+          evidence_count: number
+          id: string
+          is_active: boolean
+          pattern: string
+          problem_class: string | null
+          recommendation: string
+          source_run_ids: string[] | null
+          success_rate: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          evidence_count?: number
+          id?: string
+          is_active?: boolean
+          pattern: string
+          problem_class?: string | null
+          recommendation: string
+          source_run_ids?: string[] | null
+          success_rate?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          evidence_count?: number
+          id?: string
+          is_active?: boolean
+          pattern?: string
+          problem_class?: string | null
+          recommendation?: string
+          source_run_ids?: string[] | null
+          success_rate?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      raap_runs: {
+        Row: {
+          backtracks: number
+          branches_explored: number
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          depth: string
+          duration_ms: number | null
+          error: string | null
+          final_answer: string | null
+          goal: string
+          id: string
+          llm_calls: number
+          plan_dag: Json
+          status: string
+          strategy: string | null
+          trigger_reason: string | null
+          trigger_type: string
+        }
+        Insert: {
+          backtracks?: number
+          branches_explored?: number
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          depth?: string
+          duration_ms?: number | null
+          error?: string | null
+          final_answer?: string | null
+          goal: string
+          id?: string
+          llm_calls?: number
+          plan_dag?: Json
+          status?: string
+          strategy?: string | null
+          trigger_reason?: string | null
+          trigger_type?: string
+        }
+        Update: {
+          backtracks?: number
+          branches_explored?: number
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          depth?: string
+          duration_ms?: number | null
+          error?: string | null
+          final_answer?: string | null
+          goal?: string
+          id?: string
+          llm_calls?: number
+          plan_dag?: Json
+          status?: string
+          strategy?: string | null
+          trigger_reason?: string | null
+          trigger_type?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

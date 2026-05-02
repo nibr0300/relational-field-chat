@@ -5,6 +5,7 @@ import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
+import { invokeRaap, shouldWearHat } from "@/lib/raap-store";
 import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
 import {
   listConversations,
@@ -104,7 +105,7 @@ export default function Index() {
     }
   }, [activeConvId, refreshConversations]);
 
-  const handleSend = async (text: string, attachedFiles: AttachedFile[]) => {
+  const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean }) => {
     resetPresence();
     const attachments: Attachment[] = [];
     const docTexts: string[] = [];
@@ -177,6 +178,52 @@ export default function Index() {
       console.error("Failed to save message:", e);
     }
 
+    const finalConvId = convId;
+
+    // ─── TÄNKAR-HATTEN (RAAP) ───────────────────────────────────
+    const auto = shouldWearHat(text);
+    const wearHat = opts.hat || auto.wear;
+    const triggerType: "manual" | "auto" = opts.hat ? "manual" : "auto";
+    const triggerReason = opts.hat ? "användaren aktiverade hatten" : auto.reason;
+
+    if (wearHat) {
+      try {
+        const recentContext = messages
+          .slice(-6)
+          .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
+          .join("\n");
+        const result = await invokeRaap({
+          goal: aiContent,
+          conversationId: finalConvId,
+          triggerType,
+          triggerReason,
+          context: recentContext,
+        });
+        const assistantMsg: Msg = {
+          role: "assistant",
+          content: result.answer,
+          raapRunId: result.runId,
+          raapMeta: {
+            strategy: result.strategy,
+            branches: result.branches_explored,
+            calls: result.llm_calls,
+            ms: result.duration_ms,
+            trigger: triggerType,
+          },
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        setIsLoading(false);
+        try {
+          await saveMessage(finalConvId, { role: "assistant", content: result.answer });
+        } catch (e) { console.error(e); }
+        return;
+      } catch (e) {
+        console.error("RAAP failed, falling back to standard chat:", e);
+        toast.error("Tänkar-hatten kraschade — kör standardflöde");
+        // fall through to standard streaming
+      }
+    }
+
     let assistantSoFar = "";
     const allMessages = [...messages.filter((_, i) => i > 0), aiUserMsg];
 
@@ -190,8 +237,6 @@ export default function Index() {
         return [...prev, { role: "assistant", content: assistantSoFar }];
       });
     };
-
-    const finalConvId = convId;
 
     try {
       await streamChat({

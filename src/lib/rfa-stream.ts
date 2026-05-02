@@ -11,6 +11,8 @@ export type Msg = {
   file_url?: string;        // legacy compat
   file_name?: string;       // legacy compat
   attachments?: Attachment[];
+  raapRunId?: string;       // tänkar-hatt: trace ref
+  raapMeta?: { strategy: string; branches: number; calls: number; ms: number; trigger: string };
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
