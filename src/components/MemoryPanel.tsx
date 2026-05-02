@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem } from "lucide-react";
+import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem, Wand2, ChevronDown, ChevronRight, ScrollText, Loader2 } from "lucide-react";
 import {
   listEigenstates, deleteEigenstate,
   listCorona, deleteCorona,
@@ -8,9 +8,13 @@ import {
   listFriction, deleteFriction,
   type Eigenstate, type CoronaItem, type LimbusItem, type VortexItem, type FrictionItem,
 } from "@/lib/memory-store";
+import {
+  listConstitutionRules, retireConstitutionRule, listDistillationRuns, runDistillation,
+  type ConstitutionRule, type DistillationRun,
+} from "@/lib/distillation-store";
 import { toast } from "sonner";
 
-type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy";
+type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy" | "constitution";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[] = [
   { id: "vortex", label: "Vortex", icon: Gem, description: "Eviga mönster" },
@@ -18,6 +22,7 @@ const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[
   { id: "limbus", label: "Limbus", icon: Layers, description: "Komprimerat mellanlager" },
   { id: "corona", label: "Corona", icon: CircleDot, description: "Färska observationer" },
   { id: "legacy", label: "Legacy", icon: Brain, description: "Gamla eigenstates" },
+  { id: "constitution", label: "Konstitution", icon: ScrollText, description: "Destillerade regler" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -37,18 +42,25 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [limbus, setLimbus] = useState<LimbusItem[]>([]);
   const [corona, setCorona] = useState<CoronaItem[]>([]);
   const [legacy, setLegacy] = useState<Eigenstate[]>([]);
+  const [rules, setRules] = useState<ConstitutionRule[]>([]);
+  const [runs, setRuns] = useState<DistillationRun[]>([]);
+  const [distilling, setDistilling] = useState(false);
+
+  const refreshAll = () => Promise.all([
+    listVortex().then(setVortex).catch(() => {}),
+    listFriction().then(setFriction).catch(() => {}),
+    listLimbus().then(setLimbus).catch(() => {}),
+    listCorona().then(setCorona).catch(() => {}),
+    listEigenstates().then(setLegacy).catch(() => {}),
+    listConstitutionRules().then(setRules).catch(() => {}),
+    listDistillationRuns(10).then(setRuns).catch(() => {}),
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;
     setTab(null);
     setLoading(true);
-    Promise.all([
-      listVortex().then(setVortex).catch(() => {}),
-      listFriction().then(setFriction).catch(() => {}),
-      listLimbus().then(setLimbus).catch(() => {}),
-      listCorona().then(setCorona).catch(() => {}),
-      listEigenstates().then(setLegacy).catch(() => {}),
-    ]).finally(() => setLoading(false));
+    refreshAll().finally(() => setLoading(false));
   }, [isOpen]);
 
   const counts: Record<Tab, number> = {
@@ -57,12 +69,35 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     limbus: limbus.length,
     corona: corona.length,
     legacy: legacy.length,
+    constitution: rules.filter((r) => r.is_active).length,
   };
 
   const selectedTab = tab ? TABS.find((t) => t.id === tab) : null;
 
   const wrap = async (fn: () => Promise<void>) => {
     try { await fn(); toast.success("Raderat"); } catch { toast.error("Kunde inte radera"); }
+  };
+
+  const handleDistill = async (triggerType: "manual" | "auto_pre_purge" = "manual") => {
+    if (distilling) return;
+    setDistilling(true);
+    const id = toast.loading("Destillerar konversationshistorik (kan ta 1–2 min)…");
+    try {
+      const res = await runDistillation({ trigger_type: triggerType });
+      toast.dismiss(id);
+      if (res.rules_validated > 0) {
+        toast.success(`${res.rules_validated} ny${res.rules_validated === 1 ? "" : "a"} regel${res.rules_validated === 1 ? "" : "er"} validerad${res.rules_validated === 1 ? "" : "e"} i ${res.cycles} cykel${res.cycles === 1 ? "" : "er"}.`);
+      } else {
+        toast.message(`Inga nya regler — ${res.termination_reason}.`);
+      }
+      await refreshAll();
+      setTab("constitution");
+    } catch (e: any) {
+      toast.dismiss(id);
+      toast.error(`Destillering misslyckades: ${e.message ?? e}`);
+    } finally {
+      setDistilling(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -81,26 +116,37 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             <Brain className="w-5 h-5 text-primary" />
             <h2 className="text-lg font-semibold text-foreground">Metatronic Memory</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
-            <X className="w-5 h-5 text-muted-foreground" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDistill("manual"); }}
+              disabled={distilling}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50 transition-colors"
+              title="Pre-rens destilleringsloop: extrahera, validera och permanenta nya regler"
+            >
+              {distilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+              Destillera
+            </button>
+            <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
+              <X className="w-5 h-5 text-muted-foreground" />
+            </button>
+          </div>
         </div>
 
         {tab === null ? (
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 border-b border-border">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 border-b border-border">
             {TABS.map((t) => {
               const Icon = t.icon;
               return (
                 <button
                   key={t.id}
                   onClick={(e) => { e.stopPropagation(); setTab(t.id); }}
-                  className="flex sm:flex-col items-center sm:items-start gap-2 px-3 py-2.5 rounded-lg border border-border bg-background/60 text-left hover:border-primary/40 hover:bg-secondary/60 transition-colors"
+                  className="flex flex-col items-start gap-1 px-3 py-2.5 rounded-lg border border-border bg-background/60 text-left hover:border-primary/40 hover:bg-secondary/60 transition-colors"
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     <Icon className="w-4 h-4 shrink-0 text-primary" />
                     <span className="text-sm text-foreground truncate">{t.label}</span>
                   </span>
-                  <span className="ml-auto sm:ml-0 text-xs text-muted-foreground">{counts[t.id]} anteckningar</span>
+                  <span className="text-xs text-muted-foreground">{counts[t.id]} {t.id === "constitution" ? "regler" : "anteckningar"}</span>
                 </button>
               );
             })}
@@ -205,9 +251,100 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               <p className="text-xs text-muted-foreground mt-1.5">{new Date(e.created_at).toLocaleDateString("sv-SE")}</p>
             </Card>
           ))}
+
+          {!loading && tab === "constitution" && (
+            <ConstitutionView
+              rules={rules}
+              runs={runs}
+              onRetire={async (r) => {
+                try {
+                  await retireConstitutionRule(r.id, "manuellt avvecklad");
+                  setRules((p) => p.map((x) => (x.id === r.id ? { ...x, is_active: false } : x)));
+                  toast.success("Regel avvecklad");
+                } catch { toast.error("Kunde inte avveckla"); }
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function ConstitutionView({
+  rules, runs, onRetire,
+}: {
+  rules: ConstitutionRule[];
+  runs: DistillationRun[];
+  onRetire: (r: ConstitutionRule) => void;
+}) {
+  const [showProtocol, setShowProtocol] = useState<string | null>(null);
+  const active = rules.filter((r) => r.is_active);
+  const lastRun = runs[0];
+
+  if (active.length === 0 && !lastRun) {
+    return <Empty icon={ScrollText} text="Inga destillerade regler ännu. Klicka på 'Destillera' för att köra första loopen." />;
+  }
+
+  return (
+    <>
+      {lastRun && (
+        <div className="bg-background border border-border rounded-lg p-3">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Senaste uppgraderingskvitto</p>
+          <p className="text-sm text-foreground">
+            <span className="text-primary font-medium">{lastRun.rules_validated}</span> validerade,{" "}
+            <span className="text-muted-foreground">{lastRun.rules_rejected}</span> förkastade,{" "}
+            {lastRun.fragments_extracted} fragment ur {lastRun.cycles_completed} cykel{lastRun.cycles_completed === 1 ? "" : "er"}.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {new Date(lastRun.created_at).toLocaleString("sv-SE")} · termin: {lastRun.termination_reason ?? "—"} · {lastRun.trigger_type}
+          </p>
+          <button
+            onClick={() => setShowProtocol(showProtocol === lastRun.id ? null : lastRun.id)}
+            className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+          >
+            {showProtocol === lastRun.id ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            Detaljvy (revisionslogg)
+          </button>
+          {showProtocol === lastRun.id && (
+            <pre className="mt-2 max-h-64 overflow-auto text-[10px] leading-tight bg-card border border-border rounded p-2 text-muted-foreground">
+              {JSON.stringify(lastRun.protocol_log, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {active.length === 0 ? (
+        <Empty icon={ScrollText} text="Inga aktiva regler — kör destilleringen igen." />
+      ) : (
+        active.map((r) => (
+          <Card key={r.id} onDelete={() => onRetire(r)}>
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.is_core ? "bg-amber-500/20 text-amber-300" : "bg-primary/15 text-primary"}`}>
+                {r.is_core ? "★ KÄRNREGEL" : "REFERENS"} {r.rule_code}
+              </span>
+              <span className="text-xs text-muted-foreground">v={r.validation_score.toFixed(2)} · effekt={r.effect_size.toFixed(2)}</span>
+            </div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground mt-2">Trigger</p>
+            <p className="text-sm text-foreground leading-relaxed">{r.trigger_description}</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground mt-2">Beteende</p>
+            <p className="text-sm text-foreground leading-relaxed">{r.behavior_contract}</p>
+            {r.source_citations?.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                  {r.source_citations.length} källcitat
+                </summary>
+                <ul className="mt-1.5 space-y-1">
+                  {r.source_citations.slice(0, 5).map((c, i) => (
+                    <li key={i} className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">"{c}"</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </Card>
+        ))
+      )}
+    </>
   );
 }
 
