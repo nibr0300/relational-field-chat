@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import { Send, Paperclip, X, FileText } from "lucide-react";
 
 interface AttachedFile {
   file: File;
@@ -8,7 +8,7 @@ interface AttachedFile {
 }
 
 interface ChatInputProps {
-  onSend: (text: string, files: AttachedFile[]) => void;
+  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean }) => void;
   disabled?: boolean;
 }
 
