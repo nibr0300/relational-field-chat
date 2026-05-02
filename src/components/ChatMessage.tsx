@@ -5,6 +5,7 @@ import { Copy, Check, FileText, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { Msg, Attachment } from "@/lib/rfa-stream";
 import { ExecutorBlock } from "@/components/ExecutorBlock";
+import { RaapTraceDialog } from "@/components/RaapTraceDialog";
 
 const DOCUMENT_CONTEXT_PATTERN = /\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m;
 const MAX_MARKDOWN_RENDER_CHARS = 12_000;
@@ -91,6 +92,7 @@ function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
 
 export function ChatMessage({ message, conversationId }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const [traceOpen, setTraceOpen] = useState(false);
 
   const allAttachments: Attachment[] = [...(message.attachments ?? [])];
   if (message.image_url && !allAttachments.some((a) => a.url === message.image_url)) {
