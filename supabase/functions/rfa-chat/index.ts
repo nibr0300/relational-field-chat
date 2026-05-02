@@ -241,6 +241,37 @@ async function loadMemoryState(): Promise<string> {
   }
 
   block += "\n[END MEMORY STATE]\n";
+
+  // Konstitutionsregler från destilleringsloopen — kärnregler i sin helhet, övriga som kompakt referens
+  try {
+    const { data: rules } = await supabase
+      .from("constitution_rules")
+      .select("rule_code, trigger_description, behavior_contract, is_core, effect_size")
+      .eq("is_active", true)
+      .order("effect_size", { ascending: false })
+      .limit(40);
+    const list = rules ?? [];
+    if (list.length) {
+      const core = list.filter((r: any) => r.is_core).slice(0, 8);
+      const refs = list.filter((r: any) => !r.is_core);
+      block += "\n[DESTILLERAD KONSTITUTION — validerade regler från tidigare samtal]\n";
+      if (core.length) {
+        block += "\n## KÄRNREGLER (alltid aktiva)\n";
+        for (const r of core) {
+          block += `- [${r.rule_code}] OM ${String(r.trigger_description).slice(0, 140)} → ${String(r.behavior_contract).slice(0, 240)}\n`;
+        }
+      }
+      if (refs.length) {
+        block += "\n## REFERENSREGLER (aktivera vid matchande trigger)\n";
+        for (const r of refs.slice(0, 20)) {
+          block += `- [${r.rule_code}] ${String(r.trigger_description).slice(0, 90)}\n`;
+        }
+      }
+      block += "[END KONSTITUTION]\n";
+    }
+  } catch (e) {
+    console.error("constitution_rules load failed:", e);
+  }
   return block;
 }
 
