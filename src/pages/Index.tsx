@@ -5,6 +5,7 @@ import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
+import { invokeRaap, shouldWearHat } from "@/lib/raap-store";
 import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
 import {
   listConversations,
