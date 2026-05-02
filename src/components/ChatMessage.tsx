@@ -118,6 +118,21 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
         }`}
       >
         {allAttachments.length > 0 && <AttachmentsList attachments={allAttachments} />}
+        {!isUser && message.raapRunId && (
+          <button
+            onClick={() => setTraceOpen(true)}
+            className="mb-2 inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors"
+            title="Visa tänkar-spår"
+          >
+            <span>🎩</span>
+            <span>Tänkar-hatt</span>
+            {message.raapMeta && (
+              <span className="text-muted-foreground font-mono">
+                · {message.raapMeta.strategy} · {message.raapMeta.branches} grenar · {message.raapMeta.calls} anrop
+              </span>
+            )}
+          </button>
+        )}
         {isUser ? (
           displayContent ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p> : null
         ) : message.content.length > MAX_MARKDOWN_RENDER_CHARS ? (
@@ -147,6 +162,9 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
           </div>
         )}
       </div>
+      {message.raapRunId && (
+        <RaapTraceDialog runId={message.raapRunId} open={traceOpen} onOpenChange={setTraceOpen} />
+      )}
     </div>
   );
 }
