@@ -45,6 +45,20 @@ export default function Index() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
+  const handleInitiative = useCallback((text: string, level: number) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: `🌙 _[Initiativ · nivå ${level}]_\n\n${text}` },
+    ]);
+  }, []);
+
+  const { reset: resetPresence } = usePresenceMonitor({
+    conversationId: activeConvId,
+    enabled: !!activeConvId && !isLoading,
+    onInitiative: handleInitiative,
+  });
+
   useEffect(() => {
     listConversations().then(setConversations).catch(console.error);
   }, []);
