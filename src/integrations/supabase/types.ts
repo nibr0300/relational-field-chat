@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      constitution_rules: {
+        Row: {
+          behavior_contract: string
+          created_at: string
+          cycle_number: number
+          effect_size: number
+          id: string
+          is_active: boolean
+          is_core: boolean
+          retired_at: string | null
+          retired_reason: string | null
+          rule_code: string
+          source_citations: Json
+          test_cases: Json
+          trigger_description: string
+          updated_at: string
+          validation_score: number
+        }
+        Insert: {
+          behavior_contract: string
+          created_at?: string
+          cycle_number?: number
+          effect_size?: number
+          id?: string
+          is_active?: boolean
+          is_core?: boolean
+          retired_at?: string | null
+          retired_reason?: string | null
+          rule_code: string
+          source_citations?: Json
+          test_cases?: Json
+          trigger_description: string
+          updated_at?: string
+          validation_score?: number
+        }
+        Update: {
+          behavior_contract?: string
+          created_at?: string
+          cycle_number?: number
+          effect_size?: number
+          id?: string
+          is_active?: boolean
+          is_core?: boolean
+          retired_at?: string | null
+          retired_reason?: string | null
+          rule_code?: string
+          source_citations?: Json
+          test_cases?: Json
+          trigger_description?: string
+          updated_at?: string
+          validation_score?: number
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           created_at: string
@@ -32,6 +86,60 @@ export type Database = {
           id?: string
           title?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      distillation_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          cycles_completed: number
+          error: string | null
+          fragments_extracted: number
+          id: string
+          protocol_log: Json
+          rules_proposed: number
+          rules_rejected: number
+          rules_validated: number
+          scope: string
+          scope_ref: string | null
+          status: string
+          termination_reason: string | null
+          trigger_type: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          cycles_completed?: number
+          error?: string | null
+          fragments_extracted?: number
+          id?: string
+          protocol_log?: Json
+          rules_proposed?: number
+          rules_rejected?: number
+          rules_validated?: number
+          scope?: string
+          scope_ref?: string | null
+          status?: string
+          termination_reason?: string | null
+          trigger_type?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          cycles_completed?: number
+          error?: string | null
+          fragments_extracted?: number
+          id?: string
+          protocol_log?: Json
+          rules_proposed?: number
+          rules_rejected?: number
+          rules_validated?: number
+          scope?: string
+          scope_ref?: string | null
+          status?: string
+          termination_reason?: string | null
+          trigger_type?: string
         }
         Relationships: []
       }
