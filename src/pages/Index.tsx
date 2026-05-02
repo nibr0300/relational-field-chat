@@ -105,6 +105,7 @@ export default function Index() {
   }, [activeConvId, refreshConversations]);
 
   const handleSend = async (text: string, attachedFiles: AttachedFile[]) => {
+    resetPresence();
     const attachments: Attachment[] = [];
     const docTexts: string[] = [];
 
