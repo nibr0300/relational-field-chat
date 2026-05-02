@@ -5,6 +5,7 @@ import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
+import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
 import {
   listConversations,
   createConversation,
@@ -43,6 +44,20 @@ export default function Index() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
+  const handleInitiative = useCallback((text: string, level: number) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: `🌙 _[Initiativ · nivå ${level}]_\n\n${text}` },
+    ]);
+  }, []);
+
+  const { reset: resetPresence } = usePresenceMonitor({
+    conversationId: activeConvId,
+    enabled: !!activeConvId && !isLoading,
+    onInitiative: handleInitiative,
+  });
 
   useEffect(() => {
     listConversations().then(setConversations).catch(console.error);
@@ -90,6 +105,7 @@ export default function Index() {
   }, [activeConvId, refreshConversations]);
 
   const handleSend = async (text: string, attachedFiles: AttachedFile[]) => {
+    resetPresence();
     const attachments: Attachment[] = [];
     const docTexts: string[] = [];
 
