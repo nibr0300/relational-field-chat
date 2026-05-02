@@ -17,6 +17,7 @@ export type { AttachedFile };
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
+  const [hat, setHat] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -30,9 +31,10 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const handleSubmit = () => {
     const trimmed = input.trim();
     if ((!trimmed && files.length === 0) || disabled) return;
-    onSend(trimmed, files);
+    onSend(trimmed, files, { hat });
     setInput("");
     setFiles([]);
+    setHat(false);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,6 +112,19 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             title="Bifoga filer (bilder, PDF & Markdown)"
           >
             <Paperclip className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setHat((h) => !h)}
+            disabled={disabled}
+            className={`p-3 rounded-lg border transition-all ${
+              hat
+                ? "bg-primary/20 border-primary/50 text-primary glow-amber"
+                : "border-border text-muted-foreground hover:text-primary hover:border-primary/30"
+            } disabled:opacity-30`}
+            title={hat ? "Tänkar-hatt PÅ — djup planering aktiv" : "Aktivera tänkar-hatt (RAAP)"}
+            aria-pressed={hat}
+          >
+            <span className="text-base leading-none">🎩</span>
           </button>
           <textarea
             ref={textareaRef}
