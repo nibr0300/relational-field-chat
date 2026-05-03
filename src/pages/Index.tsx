@@ -120,6 +120,16 @@ export default function Index() {
             docText = await extractPdfText(af.file);
           } else if (af.type === "markdown") {
             docText = await readMarkdownPreview(af.file);
+          } else if (af.type === "json") {
+            const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
+            try {
+              const pretty = JSON.stringify(JSON.parse(raw), null, 2);
+              docText = pretty.length > MAX_DOC_CHARS
+                ? `${pretty.slice(0, MAX_DOC_CHARS)}\n\n[... JSON trunkerad ...]`
+                : pretty;
+            } catch {
+              docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
+            }
           }
           if (docText && docText.length > MAX_DOC_CHARS) {
             docText = `${docText.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för bearbetning ...]`;
