@@ -655,17 +655,19 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
           // Strategy: buffer this round's text; if tools fired, discard buffered text and loop.
           // Otherwise, since we already forwarded nothing, replay accumulated text.
           // Simpler: forward text live; tool-call fragments are handled separately.
-          const { toolCalls, finishReason } = await consumeStream(response, controller, true);
+          const { toolCalls, finishReason, content } = await consumeStream(response, controller, true);
 
           if (finishReason === "length" || finishReason === "max_tokens") {
+            conversation.push({ role: "assistant", content });
             for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
               conversation.push({
-                role: "assistant",
+                role: "user",
                 content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade och avsluta komplett, utan omstart eller ursäkt.]",
               });
               const continuationResponse = await callAIRaw(conversation, "none");
               if (!continuationResponse.ok || !continuationResponse.body) break;
               const continuationResult = await consumeStream(continuationResponse, controller, true);
+              if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
               if (continuationResult.finishReason !== "length" && continuationResult.finishReason !== "max_tokens") break;
             }
             break;
