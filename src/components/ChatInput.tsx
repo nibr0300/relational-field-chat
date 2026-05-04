@@ -32,10 +32,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const handleSubmit = () => {
     const trimmed = input.trim();
     if ((!trimmed && files.length === 0) || disabled) return;
-    onSend(trimmed, files, { hat });
+    onSend(trimmed, files, { hat, mirror });
     setInput("");
     setFiles([]);
     setHat(false);
+    setMirror(false);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
