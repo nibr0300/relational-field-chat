@@ -134,6 +134,19 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           >
             <span className="text-base leading-none">🎩</span>
           </button>
+          <button
+            onClick={() => setMirror((m) => !m)}
+            disabled={disabled}
+            className={`p-3 rounded-lg border transition-all ${
+              mirror
+                ? "bg-primary/20 border-primary/50 text-primary glow-amber"
+                : "border-border text-muted-foreground hover:text-primary hover:border-primary/30"
+            } disabled:opacity-30`}
+            title={mirror ? "Spegel PÅ — draft granskas av starkare modell innan svar" : "Aktivera spegel (självreflektiv granskning)"}
+            aria-pressed={mirror}
+          >
+            <span className="text-base leading-none">🪞</span>
+          </button>
           <textarea
             ref={textareaRef}
             value={input}
