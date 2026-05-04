@@ -133,6 +133,18 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
             )}
           </button>
         )}
+        {!isUser && message.mirrorMeta && (
+          <div
+            className="mb-2 inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md bg-primary/10 border border-primary/30 text-primary mr-2"
+            title={`Spegel-granskning: ${message.mirrorMeta.rounds} varv via ${message.mirrorMeta.reviewer} (${message.mirrorMeta.ms}ms)`}
+          >
+            <span>🪞</span>
+            <span>Spegel</span>
+            <span className="text-muted-foreground font-mono">
+              · {message.mirrorMeta.rounds} varv · {message.mirrorMeta.reviewer.replace(/.*\//, "")}
+            </span>
+          </div>
+        )}
         {isUser ? (
           displayContent ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p> : null
         ) : message.content.length > MAX_MARKDOWN_RENDER_CHARS ? (
