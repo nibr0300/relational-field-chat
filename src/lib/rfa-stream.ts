@@ -128,7 +128,7 @@ export async function streamChat({
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: apiMessages, conversationId }),
+        body: JSON.stringify({ messages: apiMessages, conversationId, mirror: !!mirror }),
       });
       if (![502, 503, 504].includes(resp.status)) break;
     } catch (e) {
