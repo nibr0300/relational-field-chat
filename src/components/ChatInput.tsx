@@ -8,7 +8,7 @@ interface AttachedFile {
 }
 
 interface ChatInputProps {
-  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean }) => void;
+  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => void;
   disabled?: boolean;
 }
 
@@ -18,6 +18,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [hat, setHat] = useState(false);
+  const [mirror, setMirror] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
