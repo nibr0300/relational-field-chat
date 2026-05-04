@@ -877,9 +877,9 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { messages, conversationId } = body;
+    const { messages, conversationId, mirror } = body;
 
-    return new Response(createChatStream(messages, conversationId), {
+    return new Response(createChatStream(messages, conversationId, !!mirror), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
