@@ -662,7 +662,7 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
           // Simpler: forward text live; tool-call fragments are handled separately.
           const { toolCalls, finishReason, content } = await consumeStream(response, controller, true);
 
-          if (finishReason === "length" || finishReason === "max_tokens") {
+          if (isLengthFinish(finishReason)) {
             conversation.push({ role: "assistant", content });
             for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
               conversation.push({
@@ -673,7 +673,7 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
               if (!continuationResponse.ok || !continuationResponse.body) break;
               const continuationResult = await consumeStream(continuationResponse, controller, true);
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
-              if (continuationResult.finishReason !== "length" && continuationResult.finishReason !== "max_tokens") break;
+              if (!isLengthFinish(continuationResult.finishReason)) break;
             }
             break;
           }
