@@ -171,7 +171,6 @@ export async function streamChat({
       if (line.startsWith(":") || line.trim() === "") continue;
       if (!line.startsWith("data: ")) continue;
       const json = line.slice(6).trim();
-      if (json === "[DONE]") { streamDone = true; break; }
       if (json === "[DONE]") { receivedDoneSignal = true; streamDone = true; break; }
       try {
         const parsed = JSON.parse(json);
