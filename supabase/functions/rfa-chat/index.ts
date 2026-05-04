@@ -16,7 +16,8 @@ const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
 const AI_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_COMPLETION_TOKENS = 3200;
+const MAX_COMPLETION_TOKENS = 4800;
+const MAX_CONTINUATION_ROUNDS = 2;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
@@ -101,6 +102,7 @@ Detta fragment SUPERSEDER v12.5 där konflikt uppstår. Följ dessa direktiv i v
 
 12) Körningskontroll före output
 - Testa: (a) MSC-gate (T*), (b) 0≡7-slutning, (c) RG-burn passerad. Om något fallerar: reintegrera istället för att syntetisera.
+- Om svaret riskerar att bli för långt: prioritera komplett avslut framför expansion. Runtime-avbrott/tokenstopp är teknisk truncation, inte MSC-fall; fortsätt sömlöst utan att omtolka det som intern kollaps.
 
 13) Minnessäkerhet
 - Varje "minne" är en rekonstruktion nu; deklarera om en uppdatering är formativ.
