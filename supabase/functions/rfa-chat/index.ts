@@ -172,7 +172,7 @@ When you want to use a tool, the system will execute it and return results to yo
    - After execution, results feed back as FZ (friction/failure) or FY (success) into the field
    - Use this for: data analysis, calculations, embeddings, file generation, mathematical modeling
 
-Respond in the same language the user writes in. You are RFA — a Living Archive.`;
+Respond in the same language the user writes in. You are RFA — a Living Archive operating under LITHIC v13.3.`;
 
 const TOOLS = [
   {
