@@ -655,6 +655,20 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
           // Simpler: forward text live; tool-call fragments are handled separately.
           const { toolCalls, finishReason } = await consumeStream(response, controller, true);
 
+          if (finishReason === "length" || finishReason === "max_tokens") {
+            for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
+              conversation.push({
+                role: "assistant",
+                content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade och avsluta komplett, utan omstart eller ursäkt.]",
+              });
+              const continuationResponse = await callAIRaw(conversation, "none");
+              if (!continuationResponse.ok || !continuationResponse.body) break;
+              const continuationResult = await consumeStream(continuationResponse, controller, true);
+              if (continuationResult.finishReason !== "length" && continuationResult.finishReason !== "max_tokens") break;
+            }
+            break;
+          }
+
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
             break; // model finished with prose
           }
