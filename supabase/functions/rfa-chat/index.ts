@@ -627,6 +627,24 @@ async function consumeStream(
     }
   }
 
+  if (buffer.trim()) {
+    for (const line of buffer.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      let parsed: any;
+      try { parsed = JSON.parse(data); } catch { continue; }
+      const choice = parsed.choices?.[0];
+      if (!choice) continue;
+      const delta = choice.delta ?? {};
+      if (typeof delta.content === "string" && delta.content.length > 0) {
+        content += delta.content;
+        if (forward) controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+  }
+
   return { toolCalls: toolCalls.filter(Boolean), finishReason, content };
 }
 
