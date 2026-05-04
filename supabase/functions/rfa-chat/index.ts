@@ -565,12 +565,13 @@ async function consumeStream(
   response: Response,
   controller: ReadableStreamDefaultController<Uint8Array>,
   forward: boolean
-): Promise<{ toolCalls: any[]; finishReason: string | null }> {
+): Promise<{ toolCalls: any[]; finishReason: string | null; content: string }> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   const toolCalls: any[] = [];
   let finishReason: string | null = null;
+  let content = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -594,8 +595,9 @@ async function consumeStream(
         const delta = choice.delta ?? {};
 
         // Forward textual content to client when allowed
-        if (forward && typeof delta.content === "string" && delta.content.length > 0) {
-          controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
+        if (typeof delta.content === "string" && delta.content.length > 0) {
+          content += delta.content;
+          if (forward) controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
         }
 
         // Accumulate tool_calls (streamed in fragments by index)
@@ -620,7 +622,7 @@ async function consumeStream(
     }
   }
 
-  return { toolCalls: toolCalls.filter(Boolean), finishReason };
+  return { toolCalls: toolCalls.filter(Boolean), finishReason, content };
 }
 
 function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
