@@ -105,7 +105,7 @@ export default function Index() {
     }
   }, [activeConvId, refreshConversations]);
 
-  const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean }) => {
+  const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => {
     resetPresence();
     const attachments: Attachment[] = [];
     const docTexts: string[] = [];
@@ -248,11 +248,23 @@ export default function Index() {
       });
     };
 
+    let mirrorMeta: { rounds: number; reviewer: string; ms: number } | null = null;
     try {
       await streamChat({
         messages: allMessages,
         conversationId: finalConvId,
+        mirror: opts.mirror,
         onDelta: upsert,
+        onMirrorMeta: (meta) => {
+          mirrorMeta = meta;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && prev.length > 1 && last !== WELCOME) {
+              return prev.map((m, i) => (i === prev.length - 1 ? { ...m, mirrorMeta: meta } : m));
+            }
+            return prev;
+          });
+        },
         onDone: async () => {
           setIsLoading(false);
           if (assistantSoFar && finalConvId) {

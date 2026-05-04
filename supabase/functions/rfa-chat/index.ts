@@ -648,7 +648,69 @@ async function consumeStream(
   return { toolCalls: toolCalls.filter(Boolean), finishReason, content };
 }
 
-function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
+async function runMirrorReview(draft: string, userTurn: string): Promise<string> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return "";
+  const reviewerSystem = `Du är GRANSKARE inom RFA/LITHIC v13.3. Din uppgift: bedöm en draft mot MSC≥T*=5/7, 0≡7-slutning, RG-burn, FZ/FY/FA/FF-balans, och operatorgrammatik 0–9.
+Du SKRIVER INTE OM draften. Du levererar ENDAST en kompakt kritik på max 12 rader:
+1) MSC-uppskattning (0.0–1.0) + kort motivering.
+2) Identifierade FZ-spikar eller obesvarade aspekter av användarens fråga.
+3) Operatorobalans (saknas eller överanvänds någon operator?).
+4) Konkreta förslag på vad som ska FÖRSTÄRKAS, KORTAS, eller EXPLICITGÖRAS — inte hur det ska skrivas.
+Skydda Vortex-mönster: föreslå INTE tysta omskrivningar. Markera friktion som friktion, inte brus.
+Svara på svenska. Var rak, inga inledande artigheter.`;
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        stream: false,
+        max_tokens: 600,
+        messages: [
+          { role: "system", content: reviewerSystem },
+          { role: "user", content: `ANVÄNDARENS TUR:\n${userTurn.slice(0, 3000)}\n\n---\nDRAFT ATT GRANSKA:\n${draft.slice(0, 6000)}` },
+        ],
+      }),
+    }, 25_000);
+    if (!resp.ok) {
+      console.error("Mirror reviewer error status:", resp.status);
+      return "";
+    }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return typeof text === "string" ? text.trim() : "";
+  } catch (e) {
+    console.error("Mirror reviewer exception:", e);
+    return "";
+  }
+}
+
+async function generateDraft(conversation: any[]): Promise<{ content: string; ok: boolean }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return { content: "", ok: false };
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        stream: false,
+        max_tokens: MAX_COMPLETION_TOKENS,
+        messages: conversation,
+      }),
+    }, 60_000);
+    if (!resp.ok) return { content: "", ok: false };
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return { content: typeof text === "string" ? text : "", ok: true };
+  } catch (e) {
+    console.error("Draft generation exception:", e);
+    return { content: "", ok: false };
+  }
+}
+
+function createChatStream(messages: any[], conversationId?: string, mirror = false): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
@@ -657,6 +719,38 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
         const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
         const trimmed = truncateMessages(messages);
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
+
+        // ─── SPEGEL-LÄGE ───────────────────────────────────
+        // Draft → granskning av starkare modell → revidering. Endast final streamas.
+        if (mirror) {
+          const mirrorStart = Date.now();
+          const lastUser = trimmed[trimmed.length - 1];
+          const userTurnText = typeof lastUser?.content === "string"
+            ? lastUser.content
+            : Array.isArray(lastUser?.content)
+              ? lastUser.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
+              : "";
+
+          const draft = await generateDraft(conversation);
+          if (draft.ok && draft.content) {
+            const critique = await runMirrorReview(draft.content, userTurnText);
+            if (critique) {
+              conversation.push({
+                role: "system",
+                content: `[SPEGEL-GRANSKNING — extern granskare (gemini-2.5-pro) har analyserat din draft]\n\nDIN DRAFT:\n"""\n${draft.content.slice(0, 4000)}\n"""\n\nGRANSKARENS KRITIK:\n"""\n${critique}\n"""\n\nUPPDRAG: Producera nu ditt FINALA svar till användaren. Använd kritiken som riktning, inte diktat. Bevara din egen röst och Vortex-mönster. Adressera identifierade FZ-spikar explicit. Skriv svaret direkt — ingen meta-kommentar om granskningen.`,
+              });
+            }
+          }
+          // Skicka mirror_meta som SSE-event innan final-streamning
+          controller.enqueue(sseJson({
+            mirror_meta: {
+              rounds: draft.ok ? 1 : 0,
+              reviewer: "google/gemini-2.5-pro",
+              ms: Date.now() - mirrorStart,
+            },
+          }));
+        }
+        // ───────────────────────────────────────────────────
 
         // Up to 3 tool-call rounds
         for (let round = 0; round < 3; round++) {
@@ -674,10 +768,6 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
             break;
           }
 
-          // On rounds where tools may still fire, only forward text if no tool_call comes.
-          // Strategy: buffer this round's text; if tools fired, discard buffered text and loop.
-          // Otherwise, since we already forwarded nothing, replay accumulated text.
-          // Simpler: forward text live; tool-call fragments are handled separately.
           const { toolCalls, finishReason, content } = await consumeStream(response, controller, true);
 
           if (isLengthFinish(finishReason)) {
@@ -697,10 +787,9 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
           }
 
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
-            break; // model finished with prose
+            break;
           }
 
-          // Append assistant tool-call message + tool results
           conversation.push({
             role: "assistant",
             content: "",
@@ -716,7 +805,6 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
             conversation.push(result);
           }
 
-          // Tell client a tool was used (visible hint)
           const names = toolCalls.map((t) => t.function.name).join(", ");
           controller.enqueue(sseJson({ choices: [{ delta: { content: `\n\n_⚙️ ${names}_\n\n` } }] }));
         }
@@ -789,9 +877,9 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { messages, conversationId } = body;
+    const { messages, conversationId, mirror } = body;
 
-    return new Response(createChatStream(messages, conversationId), {
+    return new Response(createChatStream(messages, conversationId, !!mirror), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {

@@ -8,7 +8,7 @@ interface AttachedFile {
 }
 
 interface ChatInputProps {
-  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean }) => void;
+  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => void;
   disabled?: boolean;
 }
 
@@ -18,6 +18,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [hat, setHat] = useState(false);
+  const [mirror, setMirror] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -31,10 +32,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const handleSubmit = () => {
     const trimmed = input.trim();
     if ((!trimmed && files.length === 0) || disabled) return;
-    onSend(trimmed, files, { hat });
+    onSend(trimmed, files, { hat, mirror });
     setInput("");
     setFiles([]);
     setHat(false);
+    setMirror(false);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +133,19 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             aria-pressed={hat}
           >
             <span className="text-base leading-none">🎩</span>
+          </button>
+          <button
+            onClick={() => setMirror((m) => !m)}
+            disabled={disabled}
+            className={`p-3 rounded-lg border transition-all ${
+              mirror
+                ? "bg-primary/20 border-primary/50 text-primary glow-amber"
+                : "border-border text-muted-foreground hover:text-primary hover:border-primary/30"
+            } disabled:opacity-30`}
+            title={mirror ? "Spegel PÅ — draft granskas av starkare modell innan svar" : "Aktivera spegel (självreflektiv granskning)"}
+            aria-pressed={mirror}
+          >
+            <span className="text-base leading-none">🪞</span>
           </button>
           <textarea
             ref={textareaRef}

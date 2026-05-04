@@ -13,6 +13,7 @@ export type Msg = {
   attachments?: Attachment[];
   raapRunId?: string;       // tänkar-hatt: trace ref
   raapMeta?: { strategy: string; branches: number; calls: number; ms: number; trigger: string };
+  mirrorMeta?: { rounds: number; reviewer: string; ms: number };
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
@@ -80,15 +81,19 @@ function compactForTransport(messages: any[]): any[] {
 export async function streamChat({
   messages,
   conversationId,
+  mirror,
   onDelta,
   onDone,
   onError,
+  onMirrorMeta,
 }: {
   messages: Msg[];
   conversationId?: string;
+  mirror?: boolean;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (error: string) => void;
+  onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
 }) {
   // Build messages for the API, including image content
   const apiMessages = compactForTransport(messages.map((m) => {
@@ -123,7 +128,7 @@ export async function streamChat({
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: apiMessages, conversationId }),
+        body: JSON.stringify({ messages: apiMessages, conversationId, mirror: !!mirror }),
       });
       if (![502, 503, 504].includes(resp.status)) break;
     } catch (e) {
@@ -174,6 +179,10 @@ export async function streamChat({
       if (json === "[DONE]") { receivedDoneSignal = true; streamDone = true; break; }
       try {
         const parsed = JSON.parse(json);
+        if (parsed.mirror_meta && onMirrorMeta) {
+          onMirrorMeta(parsed.mirror_meta);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {
@@ -192,6 +201,7 @@ export async function streamChat({
       if (json === "[DONE]") { receivedDoneSignal = true; continue; }
       try {
         const parsed = JSON.parse(json);
+        if (parsed.mirror_meta && onMirrorMeta) { onMirrorMeta(parsed.mirror_meta); continue; }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {}
