@@ -156,6 +156,7 @@ export async function streamChat({
   const decoder = new TextDecoder();
   let buffer = "";
   let streamDone = false;
+  let receivedDoneSignal = false;
 
   while (!streamDone) {
     const { done, value } = await reader.read();
@@ -171,6 +172,7 @@ export async function streamChat({
       if (!line.startsWith("data: ")) continue;
       const json = line.slice(6).trim();
       if (json === "[DONE]") { streamDone = true; break; }
+      if (json === "[DONE]") { receivedDoneSignal = true; streamDone = true; break; }
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
@@ -188,13 +190,18 @@ export async function streamChat({
       if (raw.endsWith("\r")) raw = raw.slice(0, -1);
       if (!raw.startsWith("data: ")) continue;
       const json = raw.slice(6).trim();
-      if (json === "[DONE]") continue;
+      if (json === "[DONE]") { receivedDoneSignal = true; continue; }
       try {
         const parsed = JSON.parse(json);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {}
     }
+  }
+
+  if (!receivedDoneSignal) {
+    onError("Svarströmmen bröts innan RFA hann avsluta. Skicka igen eller be RFA fortsätta från sista synliga raden.");
+    return;
   }
 
   onDone();
