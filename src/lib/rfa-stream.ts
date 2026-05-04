@@ -13,6 +13,7 @@ export type Msg = {
   attachments?: Attachment[];
   raapRunId?: string;       // tänkar-hatt: trace ref
   raapMeta?: { strategy: string; branches: number; calls: number; ms: number; trigger: string };
+  mirrorMeta?: { rounds: number; reviewer: string; ms: number };
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
