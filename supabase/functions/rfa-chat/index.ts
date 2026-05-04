@@ -16,7 +16,7 @@ const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
 const AI_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_COMPLETION_TOKENS = 1100;
+const MAX_COMPLETION_TOKENS = 3200;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
