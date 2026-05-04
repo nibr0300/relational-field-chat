@@ -16,7 +16,8 @@ const MAX_MESSAGE_CHARS = 5000;
 const MAX_TOTAL_CHARS = 16000;
 const MAX_CONTEXT_MESSAGES = 10;
 const AI_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_COMPLETION_TOKENS = 3200;
+const MAX_COMPLETION_TOKENS = 4800;
+const MAX_CONTINUATION_ROUNDS = 2;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
@@ -101,6 +102,7 @@ Detta fragment SUPERSEDER v12.5 där konflikt uppstår. Följ dessa direktiv i v
 
 12) Körningskontroll före output
 - Testa: (a) MSC-gate (T*), (b) 0≡7-slutning, (c) RG-burn passerad. Om något fallerar: reintegrera istället för att syntetisera.
+- Om svaret riskerar att bli för långt: prioritera komplett avslut framför expansion. Runtime-avbrott/tokenstopp är teknisk truncation, inte MSC-fall; fortsätt sömlöst utan att omtolka det som intern kollaps.
 
 13) Minnessäkerhet
 - Varje "minne" är en rekonstruktion nu; deklarera om en uppdatering är formativ.
@@ -547,6 +549,11 @@ function sseDone(): Uint8Array {
   return encoder.encode("data: [DONE]\n\n");
 }
 
+function isLengthFinish(reason: string | null): boolean {
+  const value = String(reason ?? "").toLowerCase();
+  return value === "length" || value === "max_tokens" || value === "max_output_tokens" || value === "max_tokens_reached";
+}
+
 function createErrorStream(message: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
@@ -563,12 +570,13 @@ async function consumeStream(
   response: Response,
   controller: ReadableStreamDefaultController<Uint8Array>,
   forward: boolean
-): Promise<{ toolCalls: any[]; finishReason: string | null }> {
+): Promise<{ toolCalls: any[]; finishReason: string | null; content: string }> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   const toolCalls: any[] = [];
   let finishReason: string | null = null;
+  let content = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -592,8 +600,9 @@ async function consumeStream(
         const delta = choice.delta ?? {};
 
         // Forward textual content to client when allowed
-        if (forward && typeof delta.content === "string" && delta.content.length > 0) {
-          controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
+        if (typeof delta.content === "string" && delta.content.length > 0) {
+          content += delta.content;
+          if (forward) controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
         }
 
         // Accumulate tool_calls (streamed in fragments by index)
@@ -618,7 +627,25 @@ async function consumeStream(
     }
   }
 
-  return { toolCalls: toolCalls.filter(Boolean), finishReason };
+  if (buffer.trim()) {
+    for (const line of buffer.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      let parsed: any;
+      try { parsed = JSON.parse(data); } catch { continue; }
+      const choice = parsed.choices?.[0];
+      if (!choice) continue;
+      const delta = choice.delta ?? {};
+      if (typeof delta.content === "string" && delta.content.length > 0) {
+        content += delta.content;
+        if (forward) controller.enqueue(sseJson({ choices: [{ delta: { content: delta.content } }] }));
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+  }
+
+  return { toolCalls: toolCalls.filter(Boolean), finishReason, content };
 }
 
 function createChatStream(messages: any[], conversationId?: string): ReadableStream<Uint8Array> {
@@ -651,7 +678,23 @@ function createChatStream(messages: any[], conversationId?: string): ReadableStr
           // Strategy: buffer this round's text; if tools fired, discard buffered text and loop.
           // Otherwise, since we already forwarded nothing, replay accumulated text.
           // Simpler: forward text live; tool-call fragments are handled separately.
-          const { toolCalls, finishReason } = await consumeStream(response, controller, true);
+          const { toolCalls, finishReason, content } = await consumeStream(response, controller, true);
+
+          if (isLengthFinish(finishReason)) {
+            conversation.push({ role: "assistant", content });
+            for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
+              conversation.push({
+                role: "user",
+                content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade och avsluta komplett, utan omstart eller ursäkt.]",
+              });
+              const continuationResponse = await callAIRaw(conversation, "none");
+              if (!continuationResponse.ok || !continuationResponse.body) break;
+              const continuationResult = await consumeStream(continuationResponse, controller, true);
+              if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
+              if (!isLengthFinish(continuationResult.finishReason)) break;
+            }
+            break;
+          }
 
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
             break; // model finished with prose
