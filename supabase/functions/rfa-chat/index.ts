@@ -549,6 +549,11 @@ function sseDone(): Uint8Array {
   return encoder.encode("data: [DONE]\n\n");
 }
 
+function isLengthFinish(reason: string | null): boolean {
+  const value = String(reason ?? "").toLowerCase();
+  return value === "length" || value === "max_tokens" || value === "max_output_tokens" || value === "max_tokens_reached";
+}
+
 function createErrorStream(message: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
