@@ -9,7 +9,7 @@ export interface Conversation {
 }
 
 const MAX_LOADED_MESSAGES = 40;
-const MAX_RENDERED_CONTENT_CHARS = 12_000;
+const MAX_RENDERED_CONTENT_CHARS = 80_000;
 
 function capStoredContent(content: string): string {
   if (content.length <= MAX_RENDERED_CONTENT_CHARS) return content;

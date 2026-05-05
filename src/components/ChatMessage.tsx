@@ -8,7 +8,7 @@ import { ExecutorBlock } from "@/components/ExecutorBlock";
 import { RaapTraceDialog } from "@/components/RaapTraceDialog";
 
 const DOCUMENT_CONTEXT_PATTERN = /\n*\[Bifogat dokument: [^\]]*\]\n*[\s\S]*$/m;
-const MAX_MARKDOWN_RENDER_CHARS = 12_000;
+const MAX_MARKDOWN_RENDER_CHARS = 80_000;
 
 interface ChatMessageProps {
   message: Msg;

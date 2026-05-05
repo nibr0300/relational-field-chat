@@ -11,13 +11,13 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const MAX_REQUEST_BYTES = 180_000;
-const MAX_MESSAGE_CHARS = 5000;
-const MAX_TOTAL_CHARS = 16000;
-const MAX_CONTEXT_MESSAGES = 10;
-const AI_CONNECT_TIMEOUT_MS = 15_000;
-const MAX_COMPLETION_TOKENS = 4800;
-const MAX_CONTINUATION_ROUNDS = 2;
+const MAX_REQUEST_BYTES = 300_000;
+const MAX_MESSAGE_CHARS = 12_000;
+const MAX_TOTAL_CHARS = 50_000;
+const MAX_CONTEXT_MESSAGES = 16;
+const AI_CONNECT_TIMEOUT_MS = 30_000;
+const MAX_COMPLETION_TOKENS = 8192;
+const MAX_CONTINUATION_ROUNDS = 4;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 

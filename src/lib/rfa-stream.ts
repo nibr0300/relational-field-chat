@@ -17,9 +17,9 @@ export type Msg = {
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
-const MAX_MESSAGE_CHARS = 5000;
-const MAX_TOTAL_CHARS = 16000;
-const MAX_CONTEXT_MESSAGES = 10;
+const MAX_MESSAGE_CHARS = 12_000;
+const MAX_TOTAL_CHARS = 50_000;
+const MAX_CONTEXT_MESSAGES = 16;
 
 function capText(text: string): string {
   if (text.length <= MAX_MESSAGE_CHARS) return text;
