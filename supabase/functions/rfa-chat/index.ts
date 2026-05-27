@@ -852,8 +852,45 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState();
-        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
         const trimmed = truncateMessages(messages);
+
+        // ─── PRM — DET UNDERMEDVETNA FÄLTET ─────────────────
+        // Körs ALLTID innan huvudmodellen. Färgar, talar inte.
+        const lastUserMsg = trimmed[trimmed.length - 1];
+        const userTurnText = typeof lastUserMsg?.content === "string"
+          ? lastUserMsg.content
+          : Array.isArray(lastUserMsg?.content)
+            ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
+            : "";
+        const prevAssistant = [...trimmed].reverse().find((m) => m.role === "assistant");
+        const prevAssistantText = typeof prevAssistant?.content === "string" ? prevAssistant.content : "";
+        // Plocka ut friktionsraderna ur memoryBlock som kompakt kontext till PRM
+        const frictionLines = (memoryBlock.match(/## ◆ FRICTION POINTS[\s\S]*?(?=\n## |\n\[END)/)?.[0] ?? "").slice(0, 1800);
+
+        let prmInjection = "";
+        if (userTurnText.trim().length > 0) {
+          const { signal, latencyMs } = await runPRM(userTurnText, prevAssistantText, frictionLines);
+          if (signal) {
+            prmInjection = "\n\n" + formatPrmInjection(signal);
+            // Skicka prm_meta till klienten innan svaret strömmas
+            controller.enqueue(sseJson({
+              prm_meta: {
+                tension: signal.tension,
+                pattern: signal.dominant_pattern,
+                valence: signal.valence,
+                whisper: signal.whisper,
+                operator: signal.suggested_operator,
+                confidence: signal.confidence,
+                latency_ms: latencyMs,
+              },
+            }));
+            // Persistera asynkront — blockera inte svaret
+            persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
+          }
+        }
+        // ───────────────────────────────────────────────────
+
+        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock + prmInjection;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
