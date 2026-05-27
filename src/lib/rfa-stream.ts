@@ -108,14 +108,6 @@ export async function streamChat({
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
   onPrmSignal?: (signal: PrmMeta) => void;
 }) {
-  messages: Msg[];
-  conversationId?: string;
-  mirror?: boolean;
-  onDelta: (text: string) => void;
-  onDone: () => void;
-  onError: (error: string) => void;
-  onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
-}) {
   // Build messages for the API, including image content
   const apiMessages = compactForTransport(messages.map((m) => {
     if (m.role !== "user") return { role: m.role, content: m.content };
