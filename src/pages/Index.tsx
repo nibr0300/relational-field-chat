@@ -131,6 +131,9 @@ export default function Index() {
             } catch {
               docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
             }
+          } else if (af.type === "text") {
+            const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
+            docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
           }
           if (docText && docText.length > MAX_DOC_CHARS) {
             docText = `${docText.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för bearbetning ...]`;
