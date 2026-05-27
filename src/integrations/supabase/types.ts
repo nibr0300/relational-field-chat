@@ -419,6 +419,51 @@ export type Database = {
           },
         ]
       }
+      prm_signals: {
+        Row: {
+          confidence: number
+          conversation_id: string | null
+          created_at: string
+          dominant_pattern: string | null
+          id: string
+          latency_ms: number | null
+          outcome: string | null
+          raw_signal: Json | null
+          suggested_operator: string | null
+          tension: number
+          valence: string | null
+          whisper: string | null
+        }
+        Insert: {
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          dominant_pattern?: string | null
+          id?: string
+          latency_ms?: number | null
+          outcome?: string | null
+          raw_signal?: Json | null
+          suggested_operator?: string | null
+          tension?: number
+          valence?: string | null
+          whisper?: string | null
+        }
+        Update: {
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          dominant_pattern?: string | null
+          id?: string
+          latency_ms?: number | null
+          outcome?: string | null
+          raw_signal?: Json | null
+          suggested_operator?: string | null
+          tension?: number
+          valence?: string | null
+          whisper?: string | null
+        }
+        Relationships: []
+      }
       raap_episodes: {
         Row: {
           action: string | null
