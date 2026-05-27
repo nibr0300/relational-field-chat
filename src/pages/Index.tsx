@@ -4,7 +4,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
-import { streamChat, type Msg, type Attachment } from "@/lib/rfa-stream";
+import { streamChat, type Msg, type Attachment, type PrmMeta } from "@/lib/rfa-stream";
 import { invokeRaap, shouldWearHat } from "@/lib/raap-store";
 import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
 import {
@@ -44,6 +44,7 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
@@ -265,6 +266,9 @@ export default function Index() {
             return prev;
           });
         },
+        onPrmSignal: (signal) => {
+          setPrmSignal(signal);
+        },
         onDone: async () => {
           setIsLoading(false);
           if (assistantSoFar && finalConvId) {
@@ -299,7 +303,7 @@ export default function Index() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <RFAHeader onMemoryClick={() => setMemoryOpen(true)} />
+        <RFAHeader onMemoryClick={() => setMemoryOpen(true)} prmSignal={prmSignal} />
         <MemoryPanel isOpen={memoryOpen} onClose={() => setMemoryOpen(false)} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
