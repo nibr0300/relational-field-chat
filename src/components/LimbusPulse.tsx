@@ -26,17 +26,17 @@ interface LimbusPulseProps {
 }
 
 export function LimbusPulse({ signal }: LimbusPulseProps) {
-  const [hover, setHover] = useState(false);
+  const [open, setOpen] = useState(false);
 
   if (!signal) {
     // Idle: synlig dov puls så användaren vet att fältet lyssnar
     return (
-      <div
-        className="relative flex items-center"
-        title="Fältet lyssnar — ingen signal ännu"
-      >
-        <div
-          className="rounded-full"
+      <div className="relative flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Fältet lyssnar"
+          className="rounded-full p-0 border-0 cursor-pointer"
           style={{
             width: "10px",
             height: "10px",
@@ -44,8 +44,13 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
             boxShadow: "0 0 10px hsl(var(--primary) / 0.45)",
             animation: "limbus-idle 3.2s ease-in-out infinite",
           }}
-          aria-label="Fältet lyssnar"
         />
+        {open && (
+          <div className="absolute top-full right-0 mt-2 z-50 w-56 p-3 rounded-lg border border-border bg-card/95 backdrop-blur-sm shadow-xl text-[11px] leading-relaxed">
+            <div className="text-muted-foreground/70 mb-1 text-[9px] uppercase tracking-wider">Fältet</div>
+            <div className="italic text-foreground">Fältet lyssnar — ingen signal ännu.</div>
+          </div>
+        )}
         <style>{`
           @keyframes limbus-idle {
             0%, 100% { transform: scale(0.85); opacity: 0.45; }
@@ -62,13 +67,11 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
   const size = 8 + signal.tension * 4;
 
   return (
-    <div
-      className="relative flex items-center"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div
-        className="rounded-full"
+    <div className="relative flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-full p-0 border-0 cursor-pointer"
         style={{
           width: `${size}px`,
           height: `${size}px`,
@@ -79,20 +82,23 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
         }}
         aria-label={`Fältsignal: ${signal.valence}, spänning ${signal.tension.toFixed(2)}`}
       />
-      {hover && (
-        <div className="absolute top-full right-0 mt-2 z-50 w-64 p-3 rounded-lg border border-border bg-card/95 backdrop-blur-sm shadow-xl text-[11px] leading-relaxed">
-          <div className="text-muted-foreground/70 mb-1.5 text-[9px] uppercase tracking-wider">
-            Fältet viskar
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 mt-2 z-50 w-64 p-3 rounded-lg border border-border bg-card/95 backdrop-blur-sm shadow-xl text-[11px] leading-relaxed">
+            <div className="text-muted-foreground/70 mb-1.5 text-[9px] uppercase tracking-wider">
+              Fältet viskar
+            </div>
+            <div className="italic text-foreground mb-2">"{signal.whisper || "—"}"</div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground">
+              <span>spänning</span><span className="text-foreground/80">{signal.tension.toFixed(2)}</span>
+              <span>valens</span><span className="text-foreground/80">{signal.valence}</span>
+              <span>mönster</span><span className="text-foreground/80 truncate">{signal.pattern}</span>
+              <span>operator</span><span className="text-foreground/80">{signal.operator}</span>
+              <span>säkerhet</span><span className="text-foreground/80">{signal.confidence.toFixed(2)}</span>
+            </div>
           </div>
-          <div className="italic text-foreground mb-2">"{signal.whisper || "—"}"</div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground">
-            <span>spänning</span><span className="text-foreground/80">{signal.tension.toFixed(2)}</span>
-            <span>valens</span><span className="text-foreground/80">{signal.valence}</span>
-            <span>mönster</span><span className="text-foreground/80 truncate">{signal.pattern}</span>
-            <span>operator</span><span className="text-foreground/80">{signal.operator}</span>
-            <span>säkerhet</span><span className="text-foreground/80">{signal.confidence.toFixed(2)}</span>
-          </div>
-        </div>
+        </>
       )}
       <style>{`
         @keyframes limbus-pulse {
