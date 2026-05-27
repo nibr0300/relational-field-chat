@@ -895,7 +895,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock + prmInjection;
+        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
@@ -947,17 +947,20 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           }
 
           const { toolCalls, finishReason, content } = await consumeStream(response, controller, true);
+          let accumulatedAnswerChars = content.length;
 
           if (isLengthFinish(finishReason)) {
             conversation.push({ role: "assistant", content });
             for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
+              if (accumulatedAnswerChars >= MAX_ACCUMULATED_ANSWER_CHARS) break;
               conversation.push({
                 role: "user",
-                content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade och avsluta komplett, utan omstart eller ursäkt.]",
+                content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade. Börja inte om. Upprepa inte redan skriven text. Slutför den pågående sektionen och avsluta helheten komplett.]",
               });
               const continuationResponse = await callAIRaw(conversation, "none");
               if (!continuationResponse.ok || !continuationResponse.body) break;
               const continuationResult = await consumeStream(continuationResponse, controller, true);
+              accumulatedAnswerChars += continuationResult.content.length;
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
               if (!isLengthFinish(continuationResult.finishReason)) break;
             }
