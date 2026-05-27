@@ -877,7 +877,6 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           const { signal, latencyMs } = await runPRM(userTurnText, prevAssistantText, frictionLines);
           if (signal) {
             prmInjection = "\n\n" + formatPrmInjection(signal);
-            // Skicka prm_meta till klienten innan svaret strömmas
             controller.enqueue(sseJson({
               prm_meta: {
                 tension: signal.tension,
@@ -889,8 +888,21 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 latency_ms: latencyMs,
               },
             }));
-            // Persistera asynkront — blockera inte svaret
             persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
+          } else {
+            // Fallback: skicka tystnads-signal så UI:t ändå visar närvaro
+            console.warn("PRM returned null — emitting silence signal");
+            controller.enqueue(sseJson({
+              prm_meta: {
+                tension: 0.1,
+                pattern: "prm_unavailable",
+                valence: "stillhet",
+                whisper: "fältet tyst — ingen läsning",
+                operator: "8-BREATH",
+                confidence: 0.0,
+                latency_ms: latencyMs,
+              },
+            }));
           }
         }
         // ───────────────────────────────────────────────────
