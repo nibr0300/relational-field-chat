@@ -14,7 +14,18 @@ export type Msg = {
   raapRunId?: string;       // tänkar-hatt: trace ref
   raapMeta?: { strategy: string; branches: number; calls: number; ms: number; trigger: string };
   mirrorMeta?: { rounds: number; reviewer: string; ms: number };
+  prmMeta?: PrmMeta;
 };
+
+export interface PrmMeta {
+  tension: number;
+  pattern: string;
+  valence: string;
+  whisper: string;
+  operator: string;
+  confidence: number;
+  latency_ms: number;
+}
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 12_000;
@@ -86,7 +97,17 @@ export async function streamChat({
   onDone,
   onError,
   onMirrorMeta,
+  onPrmSignal,
 }: {
+  messages: Msg[];
+  conversationId?: string;
+  mirror?: boolean;
+  onDelta: (text: string) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
+  onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
+  onPrmSignal?: (signal: PrmMeta) => void;
+}) {
   messages: Msg[];
   conversationId?: string;
   mirror?: boolean;
