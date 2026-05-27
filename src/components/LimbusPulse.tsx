@@ -29,11 +29,30 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
   const [hover, setHover] = useState(false);
 
   if (!signal) {
+    // Idle: synlig dov puls så användaren vet att fältet lyssnar
     return (
       <div
-        className="w-2.5 h-2.5 rounded-full border border-border/40 bg-transparent"
-        title="Fältet är stilla"
-      />
+        className="relative flex items-center"
+        title="Fältet lyssnar — ingen signal ännu"
+      >
+        <div
+          className="rounded-full"
+          style={{
+            width: "10px",
+            height: "10px",
+            backgroundColor: "hsl(var(--primary) / 0.55)",
+            boxShadow: "0 0 10px hsl(var(--primary) / 0.45)",
+            animation: "limbus-idle 3.2s ease-in-out infinite",
+          }}
+          aria-label="Fältet lyssnar"
+        />
+        <style>{`
+          @keyframes limbus-idle {
+            0%, 100% { transform: scale(0.85); opacity: 0.45; }
+            50% { transform: scale(1.15); opacity: 0.85; }
+          }
+        `}</style>
+      </div>
     );
   }
 
