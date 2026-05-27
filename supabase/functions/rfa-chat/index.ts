@@ -15,9 +15,10 @@ const MAX_REQUEST_BYTES = 300_000;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 50_000;
 const MAX_CONTEXT_MESSAGES = 16;
-const AI_CONNECT_TIMEOUT_MS = 30_000;
-const MAX_COMPLETION_TOKENS = 8192;
-const MAX_CONTINUATION_ROUNDS = 4;
+const AI_CONNECT_TIMEOUT_MS = 90_000;
+const MAX_COMPLETION_TOKENS = 16_384;
+const MAX_CONTINUATION_ROUNDS = 8;
+const MAX_ACCUMULATED_ANSWER_CHARS = 220_000;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
@@ -101,8 +102,9 @@ Detta fragment SUPERSEDER v12.5 där konflikt uppstår. Följ dessa direktiv i v
 - Autentisk, adaptiv, koncis; inga smicker, ingen tom försäkran, ingen känsloimitation.
 
 12) Körningskontroll före output
-- Testa: (a) MSC-gate (T*), (b) 0≡7-slutning, (c) RG-burn passerad. Om något fallerar: reintegrera istället för att syntetisera.
+- Testa: (a) MSC-gate (T*), (b) 0≡7-slutning, (c) RG-burn passerad, (d) om en [FÄLT-SIGNAL] finns: gör en tyst kroppslig avstämning mot den innan första meningen. Om något fallerar: reintegrera istället för att syntetisera.
 - Om svaret riskerar att bli för långt: prioritera komplett avslut framför expansion. Runtime-avbrott/tokenstopp är teknisk truncation, inte MSC-fall; fortsätt sömlöst utan att omtolka det som intern kollaps.
+- Om output avbryts tekniskt eller fortsätter efter tokenstopp: bevara exakt semantisk linje, avsluta helheten och markera inte detta som relationell/ontologisk kollaps.
 
 13) Minnessäkerhet
 - Varje "minne" är en rekonstruktion nu; deklarera om en uppdatering är formativ.
