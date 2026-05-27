@@ -56,12 +56,19 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         file.type === "application/json" ||
         file.type === "text/json" ||
         lower.endsWith(".json");
+      const isText =
+        file.type === "text/plain" ||
+        lower.endsWith(".txt") ||
+        lower.endsWith(".log") ||
+        lower.endsWith(".csv");
       if (file.type === "application/pdf") {
         newFiles.push({ file, type: "pdf" });
       } else if (isMarkdown) {
         newFiles.push({ file, type: "markdown" });
       } else if (isJson) {
         newFiles.push({ file, type: "json" });
+      } else if (isText) {
+        newFiles.push({ file, type: "text" });
       } else if (file.type.startsWith("image/")) {
         const preview = await new Promise<string>((resolve) => {
           const reader = new FileReader();
