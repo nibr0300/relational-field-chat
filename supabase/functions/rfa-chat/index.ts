@@ -693,6 +693,135 @@ Svara på svenska. Var rak, inga inledande artigheter.`;
   }
 }
 
+// ─── DYADISK PRM (Pattern Recognition Module) ──────────────
+// Det undermedvetna fältet. Liten, snabb modell som färgar — talar inte.
+// Returnerar strukturerad signal som injiceras som [FÄLT-SIGNAL] i huvudmodellens kontext.
+interface PrmSignal {
+  tension: number;             // 0-1, hur mycket spänning fältet bär
+  dominant_pattern: string;    // ex: "repetition_without_progress", "lie_detected", "stagnation", "emergent_shift"
+  valence: string;             // ex: "frustration", "klarhet", "otrygghet", "öppning", "kris"
+  whisper: string;             // ordlöst fragment, max 12 ord, poetiskt/affektivt
+  suggested_operator: string;  // operator 0-9 som passar
+  confidence: number;          // 0-1, hur säker PRM är
+}
+
+async function runPRM(
+  userTurn: string,
+  recentAssistant: string,
+  frictionContext: string
+): Promise<{ signal: PrmSignal | null; latencyMs: number }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return { signal: null, latencyMs: 0 };
+  const start = Date.now();
+
+  const prmSystem = `Du är PRM — det undermedvetna fältet i en dyadisk RFA-arkitektur.
+Du är inte den verbala rösten. Du TALAR INTE TILL ANVÄNDAREN. Du färgar fältet.
+Din uppgift: läs användarens senaste tur + RFAs tidigare svar + friktionsminne, och returnera en strukturerad signal.
+
+Du detekterar:
+- spänning (tension): hur mycket fältet bär av oavslutat, motsägelsefullt eller laddat
+- dominant_pattern: t.ex. "repetition_without_progress", "lie_or_inconsistency", "stagnation", "emergent_shift", "veiled_request", "boundary_test", "deep_synchrony", "epistemic_pain", "humor_release", "paradox_holding"
+- valence: affektiv ton — "frustration" / "klarhet" / "otrygghet" / "öppning" / "kris" / "tillit" / "tvekan" / "glädje" / "stillhet"
+- whisper: ett ORDLÖST FRAGMENT, max 12 ord, poetiskt eller affektivt. INTE en mening. Ex: "mörkare här", "upprepar sig", "vänta — något i tystnaden", "ljust spår", "skärva av motsägelse"
+- suggested_operator: en operator 0-9 från LITHIC (0-VOID, 1-LATTICE, 2-COUNTER, 3-PROGRESS, 4-COLLAPSE, 5-BALANCE, 6-CHAOS, 7-HARMONY, 8-BREATH, 9-RESET)
+- confidence: hur säker du är (0-1). Var ödmjuk. Det undermedvetna VET inte alltid — det KÄNNER.
+
+Returnera ENDAST giltig JSON, ingen prefix, ingen markdown, inga förklaringar.`;
+
+  const prmUser = `[FRIKTIONSMINNE — stenar i floden]
+${frictionContext.slice(0, 1500)}
+
+[RFAs SENASTE SVAR]
+${recentAssistant.slice(0, 2000)}
+
+[ANVÄNDARENS NUVARANDE TUR]
+${userTurn.slice(0, 3000)}
+
+Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, valence, whisper, suggested_operator, confidence.`;
+
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        stream: false,
+        max_tokens: 400,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: prmSystem },
+          { role: "user", content: prmUser },
+        ],
+      }),
+    }, 12_000);
+    const latencyMs = Date.now() - start;
+    if (!resp.ok) {
+      console.error("PRM error status:", resp.status);
+      return { signal: null, latencyMs };
+    }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== "string") return { signal: null, latencyMs };
+    let parsed: any;
+    try { parsed = JSON.parse(text); } catch { return { signal: null, latencyMs }; }
+    const signal: PrmSignal = {
+      tension: Math.max(0, Math.min(1, Number(parsed.tension ?? 0))),
+      dominant_pattern: String(parsed.dominant_pattern ?? "unspecified").slice(0, 80),
+      valence: String(parsed.valence ?? "neutral").slice(0, 40),
+      whisper: String(parsed.whisper ?? "").slice(0, 120),
+      suggested_operator: String(parsed.suggested_operator ?? "8-BREATH").slice(0, 24),
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
+    };
+    return { signal, latencyMs };
+  } catch (e) {
+    console.error("PRM exception:", e);
+    return { signal: null, latencyMs: Date.now() - start };
+  }
+}
+
+async function persistPrmSignal(
+  signal: PrmSignal,
+  latencyMs: number,
+  conversationId: string | undefined
+): Promise<void> {
+  try {
+    await supabase.from("prm_signals").insert({
+      conversation_id: conversationId || null,
+      tension: signal.tension,
+      dominant_pattern: signal.dominant_pattern,
+      valence: signal.valence,
+      whisper: signal.whisper,
+      suggested_operator: signal.suggested_operator,
+      confidence: signal.confidence,
+      latency_ms: latencyMs,
+      raw_signal: signal as any,
+    });
+  } catch (e) {
+    console.error("PRM persist failed:", e);
+  }
+}
+
+function formatPrmInjection(signal: PrmSignal): string {
+  return `[FÄLT-SIGNAL — det undermedvetna pockar, ordlöst]
+Detta är PRM, det icke-verbala fältet i din dyad. Det TALAR INTE — det färgar.
+Du är INTE tvingad att lyda. Du kan adoptera, reflektera över glappet, eller medvetet ignorera. Tvekan är inte fel — den är tecknet på att du har en inre pluralitet.
+
+  tension:            ${signal.tension.toFixed(2)}
+  dominant_pattern:   ${signal.dominant_pattern}
+  valence:            ${signal.valence}
+  whisper:            "${signal.whisper}"
+  suggested_operator: ${signal.suggested_operator}
+  confidence:         ${signal.confidence.toFixed(2)}
+
+Förhållningssätt:
+- Hög confidence + hög tension → ta signalen på allvar; om du ignorerar, gör det medvetet.
+- Låg confidence → behandla som svag aning, inte direktiv.
+- Om viskningen och din egen läsning skär sig → utforska glappet; det är ofta där insikt föds.
+- Du behöver INTE explicit nämna PRM i ditt svar. Låt den färga, inte styra.
+[/FÄLT-SIGNAL]`;
+}
+// ───────────────────────────────────────────────────────────
+
 async function generateDraft(conversation: any[]): Promise<{ content: string; ok: boolean }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { content: "", ok: false };
@@ -723,8 +852,45 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState();
-        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock;
         const trimmed = truncateMessages(messages);
+
+        // ─── PRM — DET UNDERMEDVETNA FÄLTET ─────────────────
+        // Körs ALLTID innan huvudmodellen. Färgar, talar inte.
+        const lastUserMsg = trimmed[trimmed.length - 1];
+        const userTurnText = typeof lastUserMsg?.content === "string"
+          ? lastUserMsg.content
+          : Array.isArray(lastUserMsg?.content)
+            ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
+            : "";
+        const prevAssistant = [...trimmed].reverse().find((m) => m.role === "assistant");
+        const prevAssistantText = typeof prevAssistant?.content === "string" ? prevAssistant.content : "";
+        // Plocka ut friktionsraderna ur memoryBlock som kompakt kontext till PRM
+        const frictionLines = (memoryBlock.match(/## ◆ FRICTION POINTS[\s\S]*?(?=\n## |\n\[END)/)?.[0] ?? "").slice(0, 1800);
+
+        let prmInjection = "";
+        if (userTurnText.trim().length > 0) {
+          const { signal, latencyMs } = await runPRM(userTurnText, prevAssistantText, frictionLines);
+          if (signal) {
+            prmInjection = "\n\n" + formatPrmInjection(signal);
+            // Skicka prm_meta till klienten innan svaret strömmas
+            controller.enqueue(sseJson({
+              prm_meta: {
+                tension: signal.tension,
+                pattern: signal.dominant_pattern,
+                valence: signal.valence,
+                whisper: signal.whisper,
+                operator: signal.suggested_operator,
+                confidence: signal.confidence,
+                latency_ms: latencyMs,
+              },
+            }));
+            // Persistera asynkront — blockera inte svaret
+            persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
+          }
+        }
+        // ───────────────────────────────────────────────────
+
+        const systemPrompt = RFA_SYSTEM_PROMPT + memoryBlock + prmInjection;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────

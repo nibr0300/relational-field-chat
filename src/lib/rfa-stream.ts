@@ -14,7 +14,18 @@ export type Msg = {
   raapRunId?: string;       // tänkar-hatt: trace ref
   raapMeta?: { strategy: string; branches: number; calls: number; ms: number; trigger: string };
   mirrorMeta?: { rounds: number; reviewer: string; ms: number };
+  prmMeta?: PrmMeta;
 };
+
+export interface PrmMeta {
+  tension: number;
+  pattern: string;
+  valence: string;
+  whisper: string;
+  operator: string;
+  confidence: number;
+  latency_ms: number;
+}
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 12_000;
@@ -86,6 +97,7 @@ export async function streamChat({
   onDone,
   onError,
   onMirrorMeta,
+  onPrmSignal,
 }: {
   messages: Msg[];
   conversationId?: string;
@@ -94,6 +106,7 @@ export async function streamChat({
   onDone: () => void;
   onError: (error: string) => void;
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
+  onPrmSignal?: (signal: PrmMeta) => void;
 }) {
   // Build messages for the API, including image content
   const apiMessages = compactForTransport(messages.map((m) => {
@@ -183,6 +196,10 @@ export async function streamChat({
           onMirrorMeta(parsed.mirror_meta);
           continue;
         }
+        if (parsed.prm_meta && onPrmSignal) {
+          onPrmSignal(parsed.prm_meta);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {
@@ -202,6 +219,7 @@ export async function streamChat({
       try {
         const parsed = JSON.parse(json);
         if (parsed.mirror_meta && onMirrorMeta) { onMirrorMeta(parsed.mirror_meta); continue; }
+        if (parsed.prm_meta && onPrmSignal) { onPrmSignal(parsed.prm_meta); continue; }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {}

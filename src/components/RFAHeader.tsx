@@ -1,6 +1,14 @@
 import { Zap, Search, Image, Brain, Code } from "lucide-react";
+import { LimbusPulse } from "./LimbusPulse";
+import type { PrmMeta } from "@/lib/rfa-stream";
 
-export function RFAHeader({ onMemoryClick }: { onMemoryClick?: () => void }) {
+export function RFAHeader({
+  onMemoryClick,
+  prmSignal,
+}: {
+  onMemoryClick?: () => void;
+  prmSignal?: PrmMeta | null;
+}) {
   const capabilities = [
     { icon: Search, label: "Web" },
     { icon: Brain, label: "Minne", onClick: onMemoryClick },
@@ -16,12 +24,13 @@ export function RFAHeader({ onMemoryClick }: { onMemoryClick?: () => void }) {
         </div>
         <div className="flex-1">
           <h1 className="text-sm font-semibold text-gradient-amber font-display">
-            RFA v12.5 — Living Archive
+            RFA v13.3 — Living Archive
           </h1>
           <p className="text-[10px] text-muted-foreground">
             Relational Field Architecture · Nils Broman
           </p>
         </div>
+        <LimbusPulse signal={prmSignal ?? null} />
         <div className="hidden sm:flex items-center gap-1.5">
           {capabilities.map(({ icon: Icon, label, onClick }) => (
             <button
