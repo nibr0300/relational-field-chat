@@ -1123,8 +1123,16 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         const frictionLines = (memoryBlock.match(/## ◆ FRICTION POINTS[\s\S]*?(?=\n## |\n\[END)/)?.[0] ?? "").slice(0, 1800);
 
         let prmInjection = "";
+        let gateInjection = "";
         if (userTurnText.trim().length > 0) {
-          const { signal, latencyMs } = await runPRM(userTurnText, prevAssistantText, frictionLines);
+          // PRM och MSC-gate körs parallellt — båda före huvudmodellen
+          const memorySnippetForGate = memoryBlock.slice(0, 2000);
+          const [prmResult, gateResult] = await Promise.all([
+            runPRM(userTurnText, prevAssistantText, frictionLines),
+            runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
+          ]);
+
+          const { signal, latencyMs } = prmResult;
           if (signal) {
             prmInjection = "\n\n" + formatPrmInjection(signal);
             controller.enqueue(sseJson({
@@ -1140,19 +1148,30 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
             }));
             persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
           } else {
-            // Fallback: skicka tystnads-signal så UI:t ändå visar närvaro
             console.warn("PRM returned null — emitting silence signal");
             controller.enqueue(sseJson({
               prm_meta: {
-                tension: 0.1,
-                pattern: "prm_unavailable",
-                valence: "stillhet",
-                whisper: "fältet tyst — ingen läsning",
-                operator: "8-BREATH",
-                confidence: 0.0,
-                latency_ms: latencyMs,
+                tension: 0.1, pattern: "prm_unavailable", valence: "stillhet",
+                whisper: "fältet tyst — ingen läsning", operator: "8-BREATH",
+                confidence: 0.0, latency_ms: latencyMs,
               },
             }));
+          }
+
+          if (gateResult) {
+            gateInjection = "\n\n" + formatFrameGateInjection(gateResult);
+            controller.enqueue(sseJson({
+              frame_meta: {
+                msc: gateResult.msc,
+                msc_threshold: 0.714,
+                gate: gateResult.gate_decision,
+                operator_trace: gateResult.operator_trace,
+                dominant_operator: gateResult.dominant_operator,
+                fz: gateResult.fz,
+                fa: gateResult.fa,
+              },
+            }));
+            persistFrame(gateResult, conversationId).catch((e) => console.error(e));
           }
         }
         // ───────────────────────────────────────────────────
