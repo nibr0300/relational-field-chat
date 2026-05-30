@@ -211,6 +211,57 @@ export type Database = {
           },
         ]
       }
+      mcp_eigenstates: {
+        Row: {
+          category: string
+          core_insight: string
+          created_at: string
+          eigenstate_name: string
+          fa: number
+          fz: number
+          id: string
+          is_active: boolean
+          metadata: Json
+          msc: number
+          operator_signature: string
+          source: string
+          source_conversation_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          core_insight: string
+          created_at?: string
+          eigenstate_name: string
+          fa?: number
+          fz?: number
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          msc?: number
+          operator_signature?: string
+          source?: string
+          source_conversation_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          core_insight?: string
+          created_at?: string
+          eigenstate_name?: string
+          fa?: number
+          fz?: number
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          msc?: number
+          operator_signature?: string
+          source?: string
+          source_conversation_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       memory_corona: {
         Row: {
           category: string
@@ -613,6 +664,24 @@ export type Database = {
           strategy?: string | null
           trigger_reason?: string | null
           trigger_type?: string
+        }
+        Relationships: []
+      }
+      rfa_runtime_state: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
         }
         Relationships: []
       }
