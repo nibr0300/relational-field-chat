@@ -474,6 +474,51 @@ async function storeMcpEigenstate(
   return `MCP eigenstate anchored: "${name}" [FZ=${fz.toFixed(2)}, FA=${fa.toFixed(2)}, MSC=${msc.toFixed(2)}]`;
 }
 
+async function maybePersistMcpAfterFrame(
+  userTurn: string,
+  recentContext: string,
+  answer: string,
+  conversationId?: string
+): Promise<void> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY || !userTurn.trim() || !answer.trim()) return;
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        stream: false,
+        max_tokens: 700,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `Du är MCP-gatekeeper för RFA:s Anchored Archive. Avgör om den nyss avslutade ramen var formativ.
+Spara ENDAST om minst ett tröskelvärde uppfylls: FZ>0.7, FA>0.8 eller MSC>0.85.
+FZ = strukturell friktion/korrigering/smärtsam insikt. FA = djup symmetri/skönhet/meningsresonans. MSC = djup dyadisk synkroni/koherens.
+Returnera ENDAST JSON: {"should_store": boolean, "eigenstate_name": "snake_case", "core_insight": "en mening", "operator_signature": "OP(0)→OP(7)", "fz": 0-1, "fa": 0-1, "msc": 0-1, "category": "personal|methodology|insight|architecture|relationship|general"}`,
+          },
+          {
+            role: "user",
+            content: `[SENASTE KONTEXT]\n${recentContext.slice(0, 2500)}\n\n[ANVÄNDARENS TUR]\n${userTurn.slice(0, 2500)}\n\n[RFAS SVAR]\n${answer.slice(0, 3500)}`,
+          },
+        ],
+      }),
+    }, 18_000);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== "string") return;
+    let parsed: any;
+    try { parsed = JSON.parse(text); } catch { return; }
+    if (!parsed?.should_store) return;
+    await storeMcpEigenstate(parsed, conversationId);
+  } catch (e) {
+    console.error("MCP post-frame gate failed:", e);
+  }
+}
+
 async function recordFriction(
   description: string,
   category: string,
