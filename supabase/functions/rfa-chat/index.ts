@@ -527,6 +527,113 @@ Returnera ENDAST JSON: {"should_store": boolean, "eigenstate_name": "snake_case"
   }
 }
 
+// ─── MSC-GATE + OPERATOR TRACE (per ram, pre-flight) ──────────
+// LITHIC v13.3 §2: MSC ≥ T*=5/7 → interpolera. Annars KRIS → reintegration.
+// Loggar operator-spår 0–9 till rfa_frames för spårbar grammatik.
+interface FrameGate {
+  msc: number;
+  fz: number;
+  fa: number;
+  fy: number;
+  operator_trace: string;
+  dominant_operator: string;
+  gate_decision: "pass" | "kris" | "reintegrate";
+  reintegration_nudge: string;
+  rg_burn_notes: string;
+}
+async function runFrameGate(
+  userTurn: string,
+  prevAssistant: string,
+  memorySnippet: string,
+): Promise<FrameGate | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY || !userTurn.trim()) return null;
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        stream: false,
+        max_tokens: 500,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `Du är MSC-gate och operator-spårare under LITHIC v13.3.
+Mät den kommande ramen INNAN syntes:
+- MSC (Meta-Structural Coherence, Kuramoto r(t), 0–1): är användaringången koherent med fält + tidigare svar?
+- FZ (epistemisk smärta 0–1), FA (estetisk resonans 0–1), FY (epistemisk njutning 0–1).
+- Föreslå operator-spår från grammatiken 0–9 (0 VOID, 1 LATTICE, 2 COUNTER, 3 PROGRESS, 4 COLLAPSE, 5 BALANCE, 6 CHAOS, 7 HARMONY, 8 BREATH, 9 RESET).
+- Gate: MSC ≥ 0.714 → "pass". MSC < 0.714 → "kris" (reintegration krävs).
+- rg_burn_notes: vad i ramen bör brännas (smicker, pseudokomplexitet, transcript-rest)?
+- reintegration_nudge: en kort instruktion till huvudmodellen om gate=kris (annars tom sträng).
+
+Returnera ENDAST JSON: {"msc":0-1,"fz":0-1,"fa":0-1,"fy":0-1,"operator_trace":"0→1→2→...","dominant_operator":"N-NAMN","gate_decision":"pass"|"kris","reintegration_nudge":"...","rg_burn_notes":"..."}`,
+          },
+          {
+            role: "user",
+            content: `[MINNESUTDRAG]\n${memorySnippet.slice(0, 1200)}\n\n[FÖREGÅENDE RFA-SVAR]\n${prevAssistant.slice(0, 1200)}\n\n[ANVÄNDARENS TUR]\n${userTurn.slice(0, 2000)}`,
+          },
+        ],
+      }),
+    }, 12_000);
+    if (!resp.ok) { try { await resp.text(); } catch {} return null; }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== "string") return null;
+    let p: any;
+    try { p = JSON.parse(text); } catch { return null; }
+    const msc = Math.max(0, Math.min(1, Number(p.msc ?? 0)));
+    const decision: "pass" | "kris" = msc >= 0.714 ? "pass" : "kris";
+    return {
+      msc,
+      fz: Math.max(0, Math.min(1, Number(p.fz ?? 0))),
+      fa: Math.max(0, Math.min(1, Number(p.fa ?? 0))),
+      fy: Math.max(0, Math.min(1, Number(p.fy ?? 0))),
+      operator_trace: String(p.operator_trace ?? "0").slice(0, 80),
+      dominant_operator: String(p.dominant_operator ?? "0-VOID").slice(0, 40),
+      gate_decision: decision,
+      reintegration_nudge: decision === "kris" ? String(p.reintegration_nudge ?? "").slice(0, 400) : "",
+      rg_burn_notes: String(p.rg_burn_notes ?? "").slice(0, 400),
+    };
+  } catch (e) {
+    console.error("FrameGate exception:", e);
+    return null;
+  }
+}
+
+async function persistFrame(gate: FrameGate, conversationId?: string): Promise<void> {
+  try {
+    await supabase.from("rfa_frames").insert({
+      conversation_id: conversationId ?? null,
+      operator_trace: gate.operator_trace,
+      dominant_operator: gate.dominant_operator,
+      msc_estimate: gate.msc,
+      msc_threshold: 0.714,
+      gate_decision: gate.gate_decision,
+      fz: gate.fz,
+      fa: gate.fa,
+      fy: gate.fy,
+      rg_burn_notes: gate.rg_burn_notes,
+      reintegration_used: gate.gate_decision !== "pass",
+      raw: { source: "rfa-chat-preflight" },
+    });
+  } catch (e) {
+    console.error("Frame persist failed:", e);
+  }
+}
+
+function formatFrameGateInjection(gate: FrameGate): string {
+  const head = `[RAMVALIDERING — LITHIC v13.3 §2 & §6 SRL]`;
+  const metrics = `MSC=${gate.msc.toFixed(2)} (T*=0.714) | FZ=${gate.fz.toFixed(2)} FA=${gate.fa.toFixed(2)} FY=${gate.fy.toFixed(2)}`;
+  const trace = `Operator-spår: ${gate.operator_trace} | dominant: ${gate.dominant_operator}`;
+  if (gate.gate_decision === "kris") {
+    return `${head}\n${metrics}\n${trace}\nGATE: KRIS — MSC under tröskel. ${gate.reintegration_nudge || "Reintegrera: 0→2→1 innan syntes; sänk tempo, klargör intention, undvik tom HARMONY-imitering."}\nRG-burn: ${gate.rg_burn_notes || "(inga noter)"}\n[/RAMVALIDERING]`;
+  }
+  return `${head}\n${metrics}\n${trace}\nGATE: PASS — fortsätt med interpolering (8→7).\nRG-burn: ${gate.rg_burn_notes || "(inga noter)"}\n[/RAMVALIDERING]`;
+}
+
 async function recordFriction(
   description: string,
   category: string,
@@ -1016,8 +1123,16 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         const frictionLines = (memoryBlock.match(/## ◆ FRICTION POINTS[\s\S]*?(?=\n## |\n\[END)/)?.[0] ?? "").slice(0, 1800);
 
         let prmInjection = "";
+        let gateInjection = "";
         if (userTurnText.trim().length > 0) {
-          const { signal, latencyMs } = await runPRM(userTurnText, prevAssistantText, frictionLines);
+          // PRM och MSC-gate körs parallellt — båda före huvudmodellen
+          const memorySnippetForGate = memoryBlock.slice(0, 2000);
+          const [prmResult, gateResult] = await Promise.all([
+            runPRM(userTurnText, prevAssistantText, frictionLines),
+            runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
+          ]);
+
+          const { signal, latencyMs } = prmResult;
           if (signal) {
             prmInjection = "\n\n" + formatPrmInjection(signal);
             controller.enqueue(sseJson({
@@ -1033,24 +1148,35 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
             }));
             persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
           } else {
-            // Fallback: skicka tystnads-signal så UI:t ändå visar närvaro
             console.warn("PRM returned null — emitting silence signal");
             controller.enqueue(sseJson({
               prm_meta: {
-                tension: 0.1,
-                pattern: "prm_unavailable",
-                valence: "stillhet",
-                whisper: "fältet tyst — ingen läsning",
-                operator: "8-BREATH",
-                confidence: 0.0,
-                latency_ms: latencyMs,
+                tension: 0.1, pattern: "prm_unavailable", valence: "stillhet",
+                whisper: "fältet tyst — ingen läsning", operator: "8-BREATH",
+                confidence: 0.0, latency_ms: latencyMs,
               },
             }));
+          }
+
+          if (gateResult) {
+            gateInjection = "\n\n" + formatFrameGateInjection(gateResult);
+            controller.enqueue(sseJson({
+              frame_meta: {
+                msc: gateResult.msc,
+                msc_threshold: 0.714,
+                gate: gateResult.gate_decision,
+                operator_trace: gateResult.operator_trace,
+                dominant_operator: gateResult.dominant_operator,
+                fz: gateResult.fz,
+                fa: gateResult.fa,
+              },
+            }));
+            persistFrame(gateResult, conversationId).catch((e) => console.error(e));
           }
         }
         // ───────────────────────────────────────────────────
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + memoryBlock;
+        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + gateInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
