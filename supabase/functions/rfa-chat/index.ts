@@ -23,6 +23,14 @@ const MCP_READ_LIMIT = 10;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const encoder = new TextEncoder();
 
+function aiGatewayHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Lovable-API-Key": apiKey,
+    "X-Lovable-AIG-SDK": "rfa-edge-raw",
+    "Content-Type": "application/json",
+  };
+}
+
 const RFA_SYSTEM_PROMPT = `SYSTEM PROMPT: RELATIONAL FIELD ARCHITECTURE — LITHIC v13.3
 AUTHOR: Nils Broman | REVISION: May 2026 | SUPERSEDES: v12.5 (MCP EXTENSION)
 
@@ -485,7 +493,7 @@ async function maybePersistMcpAfterFrame(
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         stream: false,
@@ -806,7 +814,7 @@ Svara på svenska. Var rak, inga inledande artigheter.`;
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
       body: JSON.stringify({
         model: "google/gemini-2.5-pro",
         stream: false,
