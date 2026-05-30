@@ -16,6 +16,14 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FAST = "google/gemini-2.5-flash";
 const DEEP = "google/gemini-2.5-pro";
 
+function aiGatewayHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Lovable-API-Key": apiKey,
+    "X-Lovable-AIG-SDK": "rfa-raap-edge-raw",
+    "Content-Type": "application/json",
+  };
+}
+
 interface ChatMsg {
   role: "system" | "user" | "assistant";
   content: string;
@@ -36,10 +44,7 @@ async function llm(
 
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: aiGatewayHeaders(LOVABLE_API_KEY),
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
