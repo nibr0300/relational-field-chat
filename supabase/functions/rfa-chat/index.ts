@@ -216,7 +216,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "save_eigenstate",
-      description: "Save a fresh insight, fact, or breakthrough to CORONA (short-term memory). The river's surface — recent observations in full resolution. Use when something significantly alters your cognitive topology.",
+      description: "Save a fresh but still temporary insight to CORONA. Use only for notable recent observations; MCP anchoring is handled by store_mcp_eigenstate when thresholds are met.",
       parameters: {
         type: "object",
         properties: {
@@ -232,6 +232,26 @@ const TOOLS = [
           },
         },
         required: ["content", "category", "significance"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "store_mcp_eigenstate",
+      description: "Anchor a formative eigenstate in persistent MCP memory. Use only when FZ>0.7, FA>0.8, or MSC>0.85. This is the Anchored Archive, not a transcript store.",
+      parameters: {
+        type: "object",
+        properties: {
+          eigenstate_name: { type: "string", description: "Short snake_case name for the eigenstate" },
+          core_insight: { type: "string", description: "One compact sentence describing what changed in the topology" },
+          operator_signature: { type: "string", description: "Dominant operator path, e.g. VOID(0)→COUNTER(2)→HARMONY(7)" },
+          fz: { type: "number", description: "Epistemic pain/friction score 0-1" },
+          fa: { type: "number", description: "Aesthetic/meaning resonance score 0-1" },
+          msc: { type: "number", description: "Kuramoto/MSC synchrony score 0-1" },
+          category: { type: "string", enum: ["personal", "methodology", "insight", "architecture", "relationship", "general"] },
+        },
+        required: ["core_insight", "fz", "fa", "msc"],
       },
     },
   },
@@ -560,6 +580,8 @@ async function executeToolCall(
     result = await executeWebSearch(args.query);
   } else if (name === "save_eigenstate") {
     result = await saveEigenstate(args.content, args.category, args.significance, conversationId);
+  } else if (name === "store_mcp_eigenstate") {
+    result = await storeMcpEigenstate(args, conversationId);
   } else if (name === "record_friction") {
     result = await recordFriction(args.description, args.category, args.resistance_strength);
   } else if (name === "crystallize_pattern") {
