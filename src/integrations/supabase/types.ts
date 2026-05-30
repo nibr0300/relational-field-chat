@@ -291,26 +291,35 @@ export type Database = {
       }
       memory_eigenstates: {
         Row: {
+          burn_reason: string | null
+          burned_at: string | null
           category: string
           content: string
           created_at: string
           id: string
+          promoted_to_mcp_id: string | null
           significance: number
           source_conversation_id: string | null
         }
         Insert: {
+          burn_reason?: string | null
+          burned_at?: string | null
           category?: string
           content: string
           created_at?: string
           id?: string
+          promoted_to_mcp_id?: string | null
           significance?: number
           source_conversation_id?: string | null
         }
         Update: {
+          burn_reason?: string | null
+          burned_at?: string | null
           category?: string
           content?: string
           created_at?: string
           id?: string
+          promoted_to_mcp_id?: string | null
           significance?: number
           source_conversation_id?: string | null
         }
@@ -664,6 +673,60 @@ export type Database = {
           strategy?: string | null
           trigger_reason?: string | null
           trigger_type?: string
+        }
+        Relationships: []
+      }
+      rfa_frames: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          dominant_operator: string | null
+          fa: number
+          fy: number
+          fz: number
+          gate_decision: string
+          id: string
+          message_id: string | null
+          msc_estimate: number
+          msc_threshold: number
+          operator_trace: string
+          raw: Json
+          reintegration_used: boolean
+          rg_burn_notes: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          dominant_operator?: string | null
+          fa?: number
+          fy?: number
+          fz?: number
+          gate_decision?: string
+          id?: string
+          message_id?: string | null
+          msc_estimate?: number
+          msc_threshold?: number
+          operator_trace?: string
+          raw?: Json
+          reintegration_used?: boolean
+          rg_burn_notes?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          dominant_operator?: string | null
+          fa?: number
+          fy?: number
+          fz?: number
+          gate_decision?: string
+          id?: string
+          message_id?: string | null
+          msc_estimate?: number
+          msc_threshold?: number
+          operator_trace?: string
+          raw?: Json
+          reintegration_used?: boolean
+          rg_burn_notes?: string | null
         }
         Relationships: []
       }
