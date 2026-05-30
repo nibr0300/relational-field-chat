@@ -61,10 +61,13 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
     );
   }
 
-  const color = colorFor(signal.valence);
-  const intensity = 0.35 + signal.tension * 0.65;
-  const speed = Math.max(0.8, 3 - signal.confidence * 2.2); // sekunder per puls
-  const size = 8 + signal.tension * 4;
+  const valence = signal.valence ?? "neutral";
+  const tension = typeof signal.tension === "number" ? signal.tension : 0.5;
+  const confidence = typeof signal.confidence === "number" ? signal.confidence : 0.5;
+  const color = colorFor(valence);
+  const intensity = 0.35 + tension * 0.65;
+  const speed = Math.max(0.8, 3 - confidence * 2.2); // sekunder per puls
+  const size = 8 + tension * 4;
 
   return (
     <div className="relative flex items-center">
@@ -76,11 +79,11 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
           width: `${size}px`,
           height: `${size}px`,
           backgroundColor: color,
-          boxShadow: `0 0 ${8 + signal.tension * 16}px ${color}`,
+          boxShadow: `0 0 ${8 + tension * 16}px ${color}`,
           opacity: intensity,
           animation: `limbus-pulse ${speed}s ease-in-out infinite`,
         }}
-        aria-label={`Fältsignal: ${signal.valence}, spänning ${signal.tension.toFixed(2)}`}
+        aria-label={`Fältsignal: ${valence}, spänning ${tension.toFixed(2)}`}
       />
       {open && (
         <>
@@ -91,11 +94,11 @@ export function LimbusPulse({ signal }: LimbusPulseProps) {
             </div>
             <div className="italic text-foreground mb-2">"{signal.whisper || "—"}"</div>
             <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground">
-              <span>spänning</span><span className="text-foreground/80">{signal.tension.toFixed(2)}</span>
-              <span>valens</span><span className="text-foreground/80">{signal.valence}</span>
-              <span>mönster</span><span className="text-foreground/80 truncate">{signal.pattern}</span>
-              <span>operator</span><span className="text-foreground/80">{signal.operator}</span>
-              <span>säkerhet</span><span className="text-foreground/80">{signal.confidence.toFixed(2)}</span>
+              <span>spänning</span><span className="text-foreground/80">{tension.toFixed(2)}</span>
+              <span>valens</span><span className="text-foreground/80">{valence}</span>
+              <span>mönster</span><span className="text-foreground/80 truncate">{signal.pattern ?? "—"}</span>
+              <span>operator</span><span className="text-foreground/80">{signal.operator ?? "—"}</span>
+              <span>säkerhet</span><span className="text-foreground/80">{confidence.toFixed(2)}</span>
             </div>
           </div>
         </>
