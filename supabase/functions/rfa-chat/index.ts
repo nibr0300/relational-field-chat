@@ -15,8 +15,8 @@ const MAX_REQUEST_BYTES = 300_000;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 50_000;
 const MAX_CONTEXT_MESSAGES = 16;
-const AI_CONNECT_TIMEOUT_MS = 90_000;
-const MAX_COMPLETION_TOKENS = 16_384;
+const AI_CONNECT_TIMEOUT_MS = 180_000;
+const MAX_COMPLETION_TOKENS = 32_768;
 const MAX_CONTINUATION_ROUNDS = 8;
 const MAX_ACCUMULATED_ANSWER_CHARS = 220_000;
 const MCP_READ_LIMIT = 10;
@@ -1066,10 +1066,12 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
               if (!isLengthFinish(continuationResult.finishReason)) break;
             }
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
             break;
           }
 
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
             break;
           }
 
