@@ -887,7 +887,7 @@ Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, va
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         stream: false,
@@ -976,7 +976,7 @@ async function generateDraft(conversation: any[]): Promise<{ content: string; ok
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         stream: false,
@@ -1175,10 +1175,7 @@ async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"):
 
   return await fetchWithTimeout(AI_GATEWAY_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: aiGatewayHeaders(LOVABLE_API_KEY),
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
       messages,
