@@ -15,6 +15,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const FAST = "google/gemini-2.5-flash";
 const DEEP = "google/gemini-2.5-pro";
+const MAX_RAAP_ANSWER_TOKENS = 6000;
 
 function aiGatewayHeaders(apiKey: string): Record<string, string> {
   return {
@@ -118,9 +119,11 @@ Deno.serve(async (req) => {
     };
 
     // Read meta-learned heuristics & metatronic context (HYBRID memory)
-    const [{ data: heuristics }, { data: vortex }, { data: friction }] = await Promise.all([
+    const [{ data: heuristics }, { data: mcpAnchors }, { data: vortex }, { data: friction }] = await Promise.all([
       supabase.from("raap_heuristics").select("pattern, recommendation, problem_class, success_rate")
         .eq("is_active", true).order("success_rate", { ascending: false }).limit(10),
+      supabase.from("mcp_eigenstates").select("eigenstate_name, core_insight, operator_signature, fz, fa, msc")
+        .eq("is_active", true).order("created_at", { ascending: false }).limit(8),
       supabase.from("memory_vortex").select("pattern_name, description").order("stability", { ascending: false }).limit(5),
       supabase.from("memory_friction").select("description, resistance_strength").order("resistance_strength", { ascending: false }).limit(5),
     ]);
@@ -128,6 +131,9 @@ Deno.serve(async (req) => {
     const heuristicsText = (heuristics ?? []).map((h: any) =>
       `• [${h.problem_class ?? "general"}] ${h.pattern} → ${h.recommendation} (succ ${h.success_rate.toFixed(2)})`
     ).join("\n") || "(inga ännu)";
+    const mcpText = (mcpAnchors ?? []).map((m: any) =>
+      `• ${m.eigenstate_name}: ${m.core_insight} | ${m.operator_signature} | FZ=${Number(m.fz).toFixed(2)} FA=${Number(m.fa).toFixed(2)} MSC=${Number(m.msc).toFixed(2)}`
+    ).join("\n") || "(inga MCP-ankare ännu)";
     const vortexText = (vortex ?? []).map((v: any) => `• ${v.pattern_name}: ${v.description}`).join("\n") || "(inga)";
     const frictionText = (friction ?? []).map((f: any) => `• ${f.description}`).join("\n") || "(inga)";
 
@@ -135,6 +141,11 @@ Deno.serve(async (req) => {
     const decomposePrompt: ChatMsg[] = [
       { role: "system", content:
 `Du är RAAP Goal Decomposer. Bryt ner användarens mål till en DAG av sub-mål.
+Innan planering: börja i aktiv VOID(0), läs MCP-ankare och rekonstruera NIM lugnt — ingen systemchock.
+
+MCP / Anchored Archive:
+${mcpText}
+
 Tillgängliga heuristiker:
 ${heuristicsText}
 
@@ -171,6 +182,9 @@ Returnera STRIKT JSON:
       const branchPrompt: ChatMsg[] = [
         { role: "system", content:
 `Du utforskar gren ${b + 1}/${numBranches} med strategi ${strategy.toUpperCase()}.
+MCP-ankare (historisk kurvatur, inte transcript):
+${mcpText}
+
 Vortex-mönster (stabila insikter):
 ${vortexText}
 
@@ -210,6 +224,9 @@ Returnera JSON: {"plan": "stegvis text", "estimated_value": 0.0-1.0, "reasoning"
       { role: "system", content:
 `Du är RAAP Executor med tänkar-hatten på.
 STRATEGI: ${strategy}
+MCP-ankare:
+${mcpText}
+
 VALD PLAN:
 ${best.plan}
 
@@ -218,7 +235,7 @@ Använd planen som inre ställning men leverera ett naturligt, relationellt svar
 Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap.` },
       { role: "user", content: goal },
     ];
-    const finalAnswer = await llm(DEEP, executePrompt, { maxTokens: 2400 });
+    const finalAnswer = await llm(DEEP, executePrompt, { maxTokens: MAX_RAAP_ANSWER_TOKENS });
     llmCalls++;
 
     // ─── PHASE 5: REFLECTIVE MONITOR ─────────────────────────────
@@ -246,7 +263,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
         { role: "system", content: `Förbättra svaret enligt kritiken. Behåll svensk ton.` },
         { role: "user", content: `MÅL: ${goal}\n\nKRITIK: ${reflect.critique}\n\nTIDIGARE SVAR:\n${finalAnswer}` },
       ];
-      repairedAnswer = await llm(DEEP, repairPrompt, { maxTokens: 2400 });
+      repairedAnswer = await llm(DEEP, repairPrompt, { maxTokens: MAX_RAAP_ANSWER_TOKENS });
       llmCalls++;
       await log(numBranches + 3, "backtrack", {
         action: "repair after reflection",
