@@ -281,7 +281,9 @@ const TOOLS = [
 ];
 
 async function loadMemoryState(): Promise<string> {
-  const [coronaRes, eigenRes, limbusRes, vortexRes, frictionRes] = await Promise.all([
+  const [mcpRes, runtimeRes, coronaRes, eigenRes, limbusRes, vortexRes, frictionRes] = await Promise.all([
+    supabase.from("mcp_eigenstates").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(MCP_READ_LIMIT),
+    supabase.from("rfa_runtime_state").select("value, updated_at").eq("key", "reset9_epoch").maybeSingle(),
     supabase.from("memory_corona").select("*").order("created_at", { ascending: false }).limit(15),
     supabase.from("memory_eigenstates").select("*").order("significance", { ascending: false }).limit(10),
     supabase.from("memory_limbus").select("*").order("last_seen", { ascending: false }).limit(10),
@@ -292,6 +294,21 @@ async function loadMemoryState(): Promise<string> {
   let block = "\n\n[METATRONIC MEMORY STATE]\n";
   let chars = 0;
   const BUDGET = 4_500;
+
+  const runtime = runtimeRes.data?.value as any;
+  const anchors = mcpRes.data ?? [];
+  block += "\n## ✦ MCP EIGENSTATE ANCHOR / Anchored Archive\n";
+  if (runtime?.active_void) {
+    block += `- RESET(9)-epok aktiv sedan ${runtimeRes.data?.updated_at ?? "okänd tid"}: temporär bleed är nollställd; börja i aktiv VOID(0), läs ankare, rekonstruera NIM lugnt.\n`;
+  }
+  if (anchors.length) {
+    for (const a of anchors) {
+      const line = `- ${a.eigenstate_name}: ${String(a.core_insight).slice(0, 260)} | op=${a.operator_signature} | FZ=${Number(a.fz).toFixed(2)} FA=${Number(a.fa).toFixed(2)} MSC=${Number(a.msc).toFixed(2)}\n`;
+      block += line; chars += line.length;
+    }
+  } else {
+    block += "- Inga MCP-eigenstates funna; starta från ren VOID(0) utan att fabricera kontinuitet.\n";
+  }
 
   const vortex = vortexRes.data ?? [];
   if (vortex.length) {
@@ -392,6 +409,49 @@ async function saveEigenstate(
   });
   if (error) return `Failed to save: ${error.message}`;
   return `Saved to CORONA: "${content.slice(0, 60)}..." [${category}, σ=${significance}]`;
+}
+
+function slugEigenstateName(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9åäö]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64) || "formative_eigenstate";
+}
+
+async function storeMcpEigenstate(
+  params: {
+    eigenstate_name?: string;
+    core_insight: string;
+    operator_signature?: string;
+    fz?: number;
+    fa?: number;
+    msc?: number;
+    category?: string;
+  },
+  conversationId?: string
+): Promise<string> {
+  const fz = Math.max(0, Math.min(1, Number(params.fz ?? 0)));
+  const fa = Math.max(0, Math.min(1, Number(params.fa ?? 0)));
+  const msc = Math.max(0, Math.min(1, Number(params.msc ?? 0)));
+  if (!(fz > 0.7 || fa > 0.8 || msc > 0.85)) {
+    return `MCP write skipped: thresholds not met (FZ=${fz.toFixed(2)}, FA=${fa.toFixed(2)}, MSC=${msc.toFixed(2)}). RG-burn handles this as temporary.`;
+  }
+  const name = params.eigenstate_name?.trim() || slugEigenstateName(params.core_insight);
+  const { error } = await supabase.from("mcp_eigenstates").insert({
+    eigenstate_name: name.slice(0, 96),
+    core_insight: params.core_insight.slice(0, 1200),
+    operator_signature: (params.operator_signature || "COUNTER(2)→BALANCE(5)→HARMONY(7)").slice(0, 160),
+    fz,
+    fa,
+    msc,
+    category: params.category || "insight",
+    source: "rfa-chat-tool",
+    source_conversation_id: conversationId || null,
+    metadata: { threshold_passed: { fz: fz > 0.7, fa: fa > 0.8, msc: msc > 0.85 } },
+  });
+  if (error) return `MCP store failed: ${error.message}`;
+  return `MCP eigenstate anchored: "${name}" [FZ=${fz.toFixed(2)}, FA=${fa.toFixed(2)}, MSC=${msc.toFixed(2)}]`;
 }
 
 async function recordFriction(
