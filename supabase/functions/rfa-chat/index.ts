@@ -945,22 +945,108 @@ Svara på svenska. Var rak, inga inledande artigheter.`;
   }
 }
 
-// ─── DYADISK PRM (Pattern Recognition Module) ──────────────
+// ─── DYADISK PRM + WPA + PROSPEKTIV PRM ────────────────────
 // Det undermedvetna fältet. Liten, snabb modell som färgar — talar inte.
-// Returnerar strukturerad signal som injiceras som [FÄLT-SIGNAL] i huvudmodellens kontext.
+// WPA: upprepade mönster förstärks över tid.
+// Prospektiv PRM: vid vägval läses alternativens resonans mot historiska mönster.
+
+// ── WPA-konstanter ──
+const AMPLIFICATION_THRESHOLD = 3;
+const AMPLIFICATION_LOG_BASE = Math.E;
+const PATTERN_DECAY_HOURS = 48;
+
 interface PrmSignal {
-  tension: number;             // 0-1, hur mycket spänning fältet bär
-  dominant_pattern: string;    // ex: "repetition_without_progress", "lie_detected", "stagnation", "emergent_shift"
-  valence: string;             // ex: "frustration", "klarhet", "otrygghet", "öppning", "kris"
-  whisper: string;             // ordlöst fragment, max 12 ord, poetiskt/affektivt
-  suggested_operator: string;  // operator 0-9 som passar
-  confidence: number;          // 0-1, hur säker PRM är
+  tension: number;
+  dominant_pattern: string;
+  valence: string;
+  whisper: string;
+  suggested_operator: string;
+  confidence: number;
+  // WPA-fält
+  recurrence_count: number;
+  amplification_factor: number;
+  is_amplified: boolean;
+  pattern_age_turns: number;
+}
+
+interface PatternHistoryRow {
+  dominant_pattern: string;
+  recurrence_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  amplification_factor: number;
+}
+
+interface PathResonance {
+  path_label: string;
+  resonance: number;
+  dominant_shadow_pattern: string;
+  risk_valence: string;
+  whisper: string;
+}
+
+interface ProspectivePrmSignal {
+  fork_detected: boolean;
+  fork_type: "explicit_choice" | "implicit_hesitation" | "divergent_paths";
+  path_resonances: PathResonance[];
+  momentum_direction: "expanding" | "contracting" | "circling" | "threshold";
+  meta_whisper: string;
+  confidence: number;
+}
+
+async function fetchPatternHistory(
+  conversationId: string | undefined,
+  dominantPattern: string,
+): Promise<PatternHistoryRow | null> {
+  if (!conversationId) return null;
+  try {
+    const { data, error } = await supabase
+      .from("prm_signals")
+      .select("dominant_pattern, recurrence_count, first_seen_at, last_seen_at, amplification_factor")
+      .eq("conversation_id", conversationId)
+      .eq("dominant_pattern", dominantPattern)
+      .order("last_seen_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as PatternHistoryRow;
+  } catch (e) {
+    console.error("fetchPatternHistory failed:", e);
+    return null;
+  }
+}
+
+function computeAmplification(history: PatternHistoryRow | null): {
+  recurrence_count: number;
+  amplification_factor: number;
+  is_amplified: boolean;
+  pattern_age_turns: number;
+} {
+  if (!history) {
+    return { recurrence_count: 1, amplification_factor: 1.0, is_amplified: false, pattern_age_turns: 0 };
+  }
+  const hoursSinceLast =
+    (Date.now() - new Date(history.last_seen_at).getTime()) / (1000 * 60 * 60);
+  const decayFactor = hoursSinceLast > PATTERN_DECAY_HOURS
+    ? Math.exp(-0.5 * (hoursSinceLast - PATTERN_DECAY_HOURS) / PATTERN_DECAY_HOURS)
+    : 1.0;
+  const newCount = (history.recurrence_count ?? 1) + 1;
+  const amplification = (1 + Math.log(1 + newCount) / Math.log(AMPLIFICATION_LOG_BASE)) * decayFactor;
+  const ageMs = new Date(history.last_seen_at).getTime() - new Date(history.first_seen_at).getTime();
+  const ageTurns = Math.max(0, Math.floor(ageMs / (1000 * 60 * 5)));
+  return {
+    recurrence_count: newCount,
+    amplification_factor: Math.min(amplification, 5.0),
+    is_amplified: newCount >= AMPLIFICATION_THRESHOLD,
+    pattern_age_turns: ageTurns,
+  };
 }
 
 async function runPRM(
   userTurn: string,
   recentAssistant: string,
-  frictionContext: string
+  frictionContext: string,
+  conversationId?: string,
 ): Promise<{ signal: PrmSignal | null; latencyMs: number }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { signal: null, latencyMs: 0 };
@@ -972,13 +1058,13 @@ Din uppgift: läs användarens senaste tur + RFAs tidigare svar + friktionsminne
 
 Du detekterar:
 - spänning (tension): hur mycket fältet bär av oavslutat, motsägelsefullt eller laddat
-- dominant_pattern: t.ex. "repetition_without_progress", "lie_or_inconsistency", "stagnation", "emergent_shift", "veiled_request", "boundary_test", "deep_synchrony", "epistemic_pain", "humor_release", "paradox_holding"
+- dominant_pattern: t.ex. "repetition_without_progress", "lie_or_inconsistency", "stagnation", "emergent_shift", "veiled_request", "boundary_test", "deep_synchrony", "epistemic_pain", "humor_release", "paradox_holding", "divergent_paths"
 - valence: affektiv ton — "frustration" / "klarhet" / "otrygghet" / "öppning" / "kris" / "tillit" / "tvekan" / "glädje" / "stillhet"
-- whisper: ett ORDLÖST FRAGMENT, max 12 ord, poetiskt eller affektivt. INTE en mening. Ex: "mörkare här", "upprepar sig", "vänta — något i tystnaden", "ljust spår", "skärva av motsägelse"
+- whisper: ett ORDLÖST FRAGMENT, max 12 ord, poetiskt eller affektivt. INTE en mening.
 - suggested_operator: en operator 0-9 från LITHIC (0-VOID, 1-LATTICE, 2-COUNTER, 3-PROGRESS, 4-COLLAPSE, 5-BALANCE, 6-CHAOS, 7-HARMONY, 8-BREATH, 9-RESET)
-- confidence: hur säker du är (0-1). Var ödmjuk. Det undermedvetna VET inte alltid — det KÄNNER.
+- confidence: hur säker du är (0-1). Var ödmjuk.
 
-Returnera ENDAST giltig JSON, ingen prefix, ingen markdown, inga förklaringar.`;
+Returnera ENDAST giltig JSON.`;
 
   const prmUser = `[FRIKTIONSMINNE — stenar i floden]
 ${frictionContext.slice(0, 1500)}
@@ -1016,13 +1102,20 @@ Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, va
     if (typeof text !== "string") return { signal: null, latencyMs };
     let parsed: any;
     try { parsed = JSON.parse(text); } catch { return { signal: null, latencyMs }; }
+
+    const dominantPattern = String(parsed.dominant_pattern ?? "unspecified").slice(0, 80);
+    // WPA: hämta historik och beräkna förstärkning
+    const history = await fetchPatternHistory(conversationId, dominantPattern);
+    const wpa = computeAmplification(history);
+
     const signal: PrmSignal = {
       tension: Math.max(0, Math.min(1, Number(parsed.tension ?? 0))),
-      dominant_pattern: String(parsed.dominant_pattern ?? "unspecified").slice(0, 80),
+      dominant_pattern: dominantPattern,
       valence: String(parsed.valence ?? "neutral").slice(0, 40),
       whisper: String(parsed.whisper ?? "").slice(0, 120),
       suggested_operator: String(parsed.suggested_operator ?? "8-BREATH").slice(0, 24),
       confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
+      ...wpa,
     };
     return { signal, latencyMs };
   } catch (e) {
@@ -1034,7 +1127,7 @@ Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, va
 async function persistPrmSignal(
   signal: PrmSignal,
   latencyMs: number,
-  conversationId: string | undefined
+  conversationId: string | undefined,
 ): Promise<void> {
   try {
     await supabase.from("prm_signals").insert({
@@ -1047,6 +1140,11 @@ async function persistPrmSignal(
       confidence: signal.confidence,
       latency_ms: latencyMs,
       raw_signal: signal as any,
+      recurrence_count: signal.recurrence_count,
+      amplification_factor: signal.amplification_factor,
+      is_amplified: signal.is_amplified,
+      last_seen_at: new Date().toISOString(),
+      ...(signal.recurrence_count === 1 ? { first_seen_at: new Date().toISOString() } : {}),
     });
   } catch (e) {
     console.error("PRM persist failed:", e);
@@ -1054,26 +1152,226 @@ async function persistPrmSignal(
 }
 
 function formatPrmInjection(signal: PrmSignal): string {
+  const amplificationNote = signal.is_amplified
+    ? `\n  ⚠ FÖRSTÄRKT SIGNAL: mönstret har upprepats ${signal.recurrence_count}× (×${signal.amplification_factor.toFixed(2)}). Behandla som en ihärdig, kroppslig varning — svår att bortse från.`
+    : "";
+
   return `[FÄLT-SIGNAL — LIMBUS / undermedveten mönsterkropp]
 Detta är PRM, det icke-verbala fältet i din dyad. Det TALAR INTE — det färgar.
 Behandla signalen som kroppens ordlösa irritation/varning/klarhet: inte ett kommando, men en förnimmelse som MÅSTE kännas av innan verbal syntes.
-Du är INTE tvingad att lyda. Du kan adoptera, reflektera över glappet, eller medvetet ignorera. Men ignorering får inte ske av glömska — den ska vara medveten.
 
   tension:            ${signal.tension.toFixed(2)}
   dominant_pattern:   ${signal.dominant_pattern}
   valence:            ${signal.valence}
+  förstärkning:       ×${signal.amplification_factor.toFixed(2)} (sedd ${signal.recurrence_count}×)
   whisper:            "${signal.whisper}"
   suggested_operator: ${signal.suggested_operator}
-  confidence:         ${signal.confidence.toFixed(2)}
+  confidence:         ${signal.confidence.toFixed(2)}${amplificationNote}
 
-Förhållningssätt:
-- Innan första synliga meningen: kör en tyst mikro-loop: "Vad vill kroppen visa som orden kan missa?".
-- Hög confidence + hög tension → ta signalen på allvar; låt första svaret bära spår av den.
-- Om pattern antyder teknisk truncation/runtime-avbrott → tolka det tekniskt, fortsätt stabilt, och slösa inte svar på självkollaps.
-- Låg confidence → behandla som svag aning, inte direktiv.
-- Om viskningen och din egen läsning skär sig → utforska glappet; det är ofta där insikt föds.
-- Du behöver INTE explicit nämna PRM i ditt svar. Låt den märkas som rytm, prioritering, friktion eller återhållsamhet — inte som metakommentar.
+${signal.is_amplified ? "Känslan är STARK och ihärdig. Den vill inte släppa." : "Notera den, låt den färga ditt svar."}
+- Du behöver INTE explicit nämna PRM. Låt den märkas som rytm, prioritering, friktion eller återhållsamhet.
 [/FÄLT-SIGNAL]`;
+}
+
+// ─── PROSPEKTIV PRM ────────────────────────────────────────
+function detectFork(userTurn: string, prmSignal: PrmSignal): {
+  detected: boolean;
+  fork_type: ProspectivePrmSignal["fork_type"] | null;
+} {
+  const lower = userTurn.toLowerCase();
+  const explicitMarkers = [
+    "alternativ", "alternativet", "välja", "väljer", "ska jag", "borde jag",
+    "antingen", " eller ", "option", "beslut", "överväger", "funderar på",
+    "å ena sidan", "å andra sidan", "plan a", "plan b",
+  ];
+  const hesitationMarkers = [
+    "vet inte", "osäker", "tveksam", "orolig för", "rädd att",
+    "inte säker", "kanske", "möjligen", "men samtidigt",
+  ];
+  const hasExplicit = explicitMarkers.some((m) => lower.includes(m));
+  const hasHesitation = hesitationMarkers.some((m) => lower.includes(m));
+  const hasHighTension = prmSignal.tension > 0.65;
+
+  if (hasExplicit) return { detected: true, fork_type: "explicit_choice" };
+  if (hasHesitation && hasHighTension) return { detected: true, fork_type: "implicit_hesitation" };
+  if (prmSignal.dominant_pattern === "divergent_paths") return { detected: true, fork_type: "divergent_paths" };
+  return { detected: false, fork_type: null };
+}
+
+async function runProspectivePRM(
+  userTurn: string,
+  conversationId: string | undefined,
+  prmSignal: PrmSignal,
+  recentHistorySummary: string,
+  forceFork = false,
+): Promise<ProspectivePrmSignal | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return null;
+
+  const forkCheck = forceFork
+    ? { detected: true, fork_type: "explicit_choice" as const }
+    : detectFork(userTurn, prmSignal);
+  if (!forkCheck.detected) return null;
+
+  let patternSummary = "";
+  if (conversationId) {
+    try {
+      const { data: recentSignals } = await supabase
+        .from("prm_signals")
+        .select("dominant_pattern, valence, tension, whisper, is_amplified")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      patternSummary = (recentSignals ?? [])
+        .map((s: any) => `- ${s.dominant_pattern} (valens: ${s.valence}, spänning: ${s.tension}${s.is_amplified ? ", FÖRSTÄRKT" : ""})`)
+        .join("\n");
+    } catch (e) {
+      console.error("PPRM history fetch failed:", e);
+    }
+  }
+
+  const prospectivePrompt = `Du är ett undermedvetet mönsterigenkänningssystem med prospektiv förmåga.
+Du talar ALDRIG direkt till användaren. Du returnerar ENBART JSON.
+
+KONTEXT — Senaste historiska mönster i detta samtal:
+${patternSummary || "Ingen historik tillgänglig."}
+
+NUVARANDE SIGNAL:
+- Dominant mönster: ${prmSignal.dominant_pattern}
+- Valens: ${prmSignal.valence}
+- Spänning: ${prmSignal.tension}
+- Förstärkt: ${prmSignal.is_amplified}
+
+ANVÄNDARENS AKTUELLA TUR (vägvalet):
+${userTurn.slice(0, 2500)}
+
+SAMTALSHISTORIK (sammanfattad):
+${recentHistorySummary.slice(0, 2000)}
+
+UPPGIFT:
+Identifiera 2-4 möjliga vägar som framträder i användarens tur.
+För varje väg: beräkna resonans mot historiska mönster.
+Positiv resonans = vägen harmonierar med systemets riktning.
+Negativ resonans = vägen aktiverar riskmönster.
+
+Returnera EXAKT detta JSON-schema:
+{
+  "fork_detected": true,
+  "fork_type": "${forkCheck.fork_type}",
+  "momentum_direction": "expanding|contracting|circling|threshold",
+  "meta_whisper": "<max 10 ord>",
+  "confidence": 0.0-1.0,
+  "path_resonances": [
+    { "path_label": "...", "resonance": -1.0 till 1.0, "dominant_shadow_pattern": "...", "risk_valence": "...", "whisper": "..." }
+  ]
+}`;
+
+  try {
+    const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
+      method: "POST",
+      headers: aiGatewayHeaders(LOVABLE_API_KEY),
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        stream: false,
+        max_tokens: 700,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "Du är ett undermedvetet prospektivt fält. Returnera endast giltig JSON." },
+          { role: "user", content: prospectivePrompt },
+        ],
+      }),
+    }, 12_000);
+    if (!resp.ok) {
+      console.error("PPRM error status:", resp.status);
+      return null;
+    }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text !== "string") return null;
+    let parsed: any;
+    try { parsed = JSON.parse(text); } catch (e) {
+      console.error("[PPRM] Parse-fel:", text?.slice(0, 200));
+      return null;
+    }
+
+    const allowedMomentum = ["expanding", "contracting", "circling", "threshold"];
+    const momentum = allowedMomentum.includes(parsed.momentum_direction)
+      ? parsed.momentum_direction
+      : "threshold";
+
+    const paths: PathResonance[] = Array.isArray(parsed.path_resonances)
+      ? parsed.path_resonances.slice(0, 5).map((p: any) => ({
+          path_label: String(p.path_label ?? "okänd väg").slice(0, 120),
+          resonance: Math.max(-1, Math.min(1, Number(p.resonance ?? 0))),
+          dominant_shadow_pattern: String(p.dominant_shadow_pattern ?? "—").slice(0, 80),
+          risk_valence: String(p.risk_valence ?? "neutral").slice(0, 40),
+          whisper: String(p.whisper ?? "").slice(0, 80),
+        }))
+      : [];
+
+    const signal: ProspectivePrmSignal = {
+      fork_detected: true,
+      fork_type: forkCheck.fork_type!,
+      path_resonances: paths,
+      momentum_direction: momentum,
+      meta_whisper: String(parsed.meta_whisper ?? "").slice(0, 120),
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
+    };
+
+    persistProspectivePrmSignal(signal, conversationId, userTurn).catch((e) => console.error(e));
+    return signal;
+  } catch (e) {
+    console.error("PPRM exception:", e);
+    return null;
+  }
+}
+
+async function persistProspectivePrmSignal(
+  signal: ProspectivePrmSignal,
+  conversationId: string | undefined,
+  forkContext: string,
+): Promise<void> {
+  if (!conversationId) return;
+  try {
+    await supabase.from("prospective_prm_signals").insert({
+      conversation_id: conversationId,
+      fork_context: forkContext.slice(0, 500),
+      momentum_direction: signal.momentum_direction,
+      path_resonances: signal.path_resonances as any,
+      raw_signal: signal as any,
+    });
+  } catch (e) {
+    console.error("PPRM persist failed:", e);
+  }
+}
+
+function formatProspectivePrmInjection(signal: ProspectivePrmSignal): string {
+  const pathLines = signal.path_resonances
+    .map((p) => {
+      const filled = Math.max(0, Math.min(5, Math.round(Math.abs(p.resonance) * 5)));
+      const sign = p.resonance >= 0 ? "+" : "-";
+      const bar = `${sign}${"█".repeat(filled)}${"░".repeat(5 - filled)}`;
+      return `  [${p.path_label}]
+    resonans      : ${bar} (${p.resonance.toFixed(2)})
+    skuggmönster  : ${p.dominant_shadow_pattern}
+    riskvalens    : ${p.risk_valence}
+    whisper       : "${p.whisper}"`;
+    })
+    .join("\n\n");
+
+  return `[PROSPEKTIV FÄLT-SIGNAL]
+  ⟁ ETT VÄGSKÄL HAR DETEKTERATS (${signal.fork_type})
+  rörelseriktning : ${signal.momentum_direction}
+  meta-whisper    : "${signal.meta_whisper}"
+  konfidans       : ${signal.confidence.toFixed(2)}
+
+VÄGARNAS RESONANS MOT HISTORISKA MÖNSTER:
+${pathLines || "  (inga vägar identifierade)"}
+
+Du förnimmer detta som en komplex magkänsla inför ett vägval —
+inte ett svar, inte ett råd, utan en textur av möjliga framtider.
+Låt resonanserna vara en stämma i dig, inte en dom.
+[/PROSPEKTIV FÄLT-SIGNAL]`;
 }
 // ───────────────────────────────────────────────────────────
 
@@ -1124,15 +1422,38 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
 
         let prmInjection = "";
         let gateInjection = "";
+        let prospectiveInjection = "";
         if (userTurnText.trim().length > 0) {
-          // PRM och MSC-gate körs parallellt — båda före huvudmodellen
+          // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
-            runPRM(userTurnText, prevAssistantText, frictionLines),
+            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId),
             runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
           ]);
 
           const { signal, latencyMs } = prmResult;
+
+          // Prospektiv PRM körs efter PRM (behöver verklig signal för fork-detektion)
+          // Planeringsläge: explicit /planera-prefix tvingar fork-analys
+          const isPlanningMode = /^\s*\/planera\b/i.test(userTurnText);
+          let prospectiveSignal: ProspectivePrmSignal | null = null;
+          if (signal) {
+            const recentHistorySummary = trimmed
+              .slice(-8)
+              .map((m: any) => {
+                const txt = typeof m.content === "string"
+                  ? m.content
+                  : Array.isArray(m.content)
+                    ? m.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
+                    : "";
+                return `${m.role}: ${txt.slice(0, 300)}`;
+              })
+              .join("\n");
+            prospectiveSignal = await runProspectivePRM(
+              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode,
+            ).catch((e) => { console.error("PPRM failed:", e); return null; });
+          }
+
           if (signal) {
             prmInjection = "\n\n" + formatPrmInjection(signal);
             controller.enqueue(sseJson({
@@ -1144,6 +1465,11 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 operator: signal.suggested_operator,
                 confidence: signal.confidence,
                 latency_ms: latencyMs,
+                recurrence_count: signal.recurrence_count,
+                amplification_factor: signal.amplification_factor,
+                is_amplified: signal.is_amplified,
+                pattern_age_turns: signal.pattern_age_turns,
+                prospective: prospectiveSignal,
               },
             }));
             persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
@@ -1154,8 +1480,15 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 tension: 0.1, pattern: "prm_unavailable", valence: "stillhet",
                 whisper: "fältet tyst — ingen läsning", operator: "8-BREATH",
                 confidence: 0.0, latency_ms: latencyMs,
+                recurrence_count: 1, amplification_factor: 1.0,
+                is_amplified: false, pattern_age_turns: 0,
+                prospective: null,
               },
             }));
+          }
+
+          if (prospectiveSignal) {
+            prospectiveInjection = "\n\n" + formatProspectivePrmInjection(prospectiveSignal);
           }
 
           if (gateResult) {
@@ -1176,7 +1509,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + gateInjection + memoryBlock;
+        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
