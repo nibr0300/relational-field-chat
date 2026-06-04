@@ -326,6 +326,7 @@ export default function Index() {
             )}
           </div>
         </div>
+        {prmSignal?.prospective && <ForkCompass prospective={prmSignal.prospective} />}
         <ChatInput onSend={handleSend} disabled={isLoading} />
       </div>
     </div>
