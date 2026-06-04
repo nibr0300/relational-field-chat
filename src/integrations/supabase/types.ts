@@ -481,46 +481,91 @@ export type Database = {
       }
       prm_signals: {
         Row: {
+          amplification_factor: number
           confidence: number
           conversation_id: string | null
           created_at: string
           dominant_pattern: string | null
+          first_seen_at: string
           id: string
+          is_amplified: boolean
+          last_seen_at: string
           latency_ms: number | null
           outcome: string | null
           raw_signal: Json | null
+          recurrence_count: number
           suggested_operator: string | null
           tension: number
           valence: string | null
           whisper: string | null
         }
         Insert: {
+          amplification_factor?: number
           confidence?: number
           conversation_id?: string | null
           created_at?: string
           dominant_pattern?: string | null
+          first_seen_at?: string
           id?: string
+          is_amplified?: boolean
+          last_seen_at?: string
           latency_ms?: number | null
           outcome?: string | null
           raw_signal?: Json | null
+          recurrence_count?: number
           suggested_operator?: string | null
           tension?: number
           valence?: string | null
           whisper?: string | null
         }
         Update: {
+          amplification_factor?: number
           confidence?: number
           conversation_id?: string | null
           created_at?: string
           dominant_pattern?: string | null
+          first_seen_at?: string
           id?: string
+          is_amplified?: boolean
+          last_seen_at?: string
           latency_ms?: number | null
           outcome?: string | null
           raw_signal?: Json | null
+          recurrence_count?: number
           suggested_operator?: string | null
           tension?: number
           valence?: string | null
           whisper?: string | null
+        }
+        Relationships: []
+      }
+      prospective_prm_signals: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          fork_context: string
+          id: string
+          momentum_direction: string
+          path_resonances: Json
+          raw_signal: Json
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          fork_context: string
+          id?: string
+          momentum_direction: string
+          path_resonances: Json
+          raw_signal: Json
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          fork_context?: string
+          id?: string
+          momentum_direction?: string
+          path_resonances?: Json
+          raw_signal?: Json
         }
         Relationships: []
       }
