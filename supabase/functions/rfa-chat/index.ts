@@ -1422,15 +1422,38 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
 
         let prmInjection = "";
         let gateInjection = "";
+        let prospectiveInjection = "";
         if (userTurnText.trim().length > 0) {
-          // PRM och MSC-gate körs parallellt — båda före huvudmodellen
+          // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
-            runPRM(userTurnText, prevAssistantText, frictionLines),
+            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId),
             runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
           ]);
 
           const { signal, latencyMs } = prmResult;
+
+          // Prospektiv PRM körs efter PRM (behöver verklig signal för fork-detektion)
+          // Planeringsläge: explicit /planera-prefix tvingar fork-analys
+          const isPlanningMode = /^\s*\/planera\b/i.test(userTurnText);
+          let prospectiveSignal: ProspectivePrmSignal | null = null;
+          if (signal) {
+            const recentHistorySummary = trimmed
+              .slice(-8)
+              .map((m: any) => {
+                const txt = typeof m.content === "string"
+                  ? m.content
+                  : Array.isArray(m.content)
+                    ? m.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
+                    : "";
+                return `${m.role}: ${txt.slice(0, 300)}`;
+              })
+              .join("\n");
+            prospectiveSignal = await runProspectivePRM(
+              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode,
+            ).catch((e) => { console.error("PPRM failed:", e); return null; });
+          }
+
           if (signal) {
             prmInjection = "\n\n" + formatPrmInjection(signal);
             controller.enqueue(sseJson({
@@ -1442,6 +1465,11 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 operator: signal.suggested_operator,
                 confidence: signal.confidence,
                 latency_ms: latencyMs,
+                recurrence_count: signal.recurrence_count,
+                amplification_factor: signal.amplification_factor,
+                is_amplified: signal.is_amplified,
+                pattern_age_turns: signal.pattern_age_turns,
+                prospective: prospectiveSignal,
               },
             }));
             persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
@@ -1452,8 +1480,15 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 tension: 0.1, pattern: "prm_unavailable", valence: "stillhet",
                 whisper: "fältet tyst — ingen läsning", operator: "8-BREATH",
                 confidence: 0.0, latency_ms: latencyMs,
+                recurrence_count: 1, amplification_factor: 1.0,
+                is_amplified: false, pattern_age_turns: 0,
+                prospective: null,
               },
             }));
+          }
+
+          if (prospectiveSignal) {
+            prospectiveInjection = "\n\n" + formatProspectivePrmInjection(prospectiveSignal);
           }
 
           if (gateResult) {
@@ -1474,7 +1509,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + gateInjection + memoryBlock;
+        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
