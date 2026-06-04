@@ -17,6 +17,23 @@ export type Msg = {
   prmMeta?: PrmMeta;
 };
 
+export interface PathResonanceMeta {
+  path_label: string;
+  resonance: number;
+  dominant_shadow_pattern: string;
+  risk_valence: string;
+  whisper: string;
+}
+
+export interface ProspectiveMeta {
+  fork_detected: boolean;
+  fork_type: string;
+  momentum_direction: "expanding" | "contracting" | "circling" | "threshold" | string;
+  meta_whisper: string;
+  confidence: number;
+  path_resonances: PathResonanceMeta[];
+}
+
 export interface PrmMeta {
   tension: number;
   pattern: string;
@@ -25,6 +42,11 @@ export interface PrmMeta {
   operator: string;
   confidence: number;
   latency_ms: number;
+  recurrence_count?: number;
+  amplification_factor?: number;
+  is_amplified?: boolean;
+  pattern_age_turns?: number;
+  prospective?: ProspectiveMeta | null;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
