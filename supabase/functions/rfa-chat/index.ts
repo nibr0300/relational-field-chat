@@ -765,7 +765,8 @@ async function executeWebSearch(query: string): Promise<string> {
 
 async function executeToolCall(
   toolCall: any,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<{ role: string; tool_call_id: string; content: string }> {
   const name = toolCall.function.name;
   let args: any = {};
@@ -779,19 +780,20 @@ async function executeToolCall(
   if (name === "web_search") {
     result = await executeWebSearch(args.query);
   } else if (name === "save_eigenstate") {
-    result = await saveEigenstate(args.content, args.category, args.significance, conversationId);
+    result = await saveEigenstate(args.content, args.category, args.significance, conversationId, userId);
   } else if (name === "store_mcp_eigenstate") {
-    result = await storeMcpEigenstate(args, conversationId);
+    result = await storeMcpEigenstate(args, conversationId, userId);
   } else if (name === "record_friction") {
-    result = await recordFriction(args.description, args.category, args.resistance_strength);
+    result = await recordFriction(args.description, args.category, args.resistance_strength, userId);
   } else if (name === "crystallize_pattern") {
-    result = await crystallizePattern(args.pattern_name, args.description, args.stability, args.related_categories ?? []);
+    result = await crystallizePattern(args.pattern_name, args.description, args.stability, args.related_categories ?? [], userId);
   } else {
     result = `Unknown tool: ${name}`;
   }
 
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
+
 
 function contentLength(content: unknown): number {
   if (typeof content === "string") return content.length;
