@@ -632,9 +632,11 @@ Returnera ENDAST JSON: {"msc":0-1,"fz":0-1,"fa":0-1,"fy":0-1,"operator_trace":"0
   }
 }
 
-async function persistFrame(gate: FrameGate, conversationId?: string): Promise<void> {
+async function persistFrame(gate: FrameGate, conversationId?: string, userId?: string | null): Promise<void> {
+  if (!userId) return;
   try {
     await supabase.from("rfa_frames").insert({
+      user_id: userId,
       conversation_id: conversationId ?? null,
       operator_trace: gate.operator_trace,
       dominant_operator: gate.dominant_operator,
@@ -653,6 +655,7 @@ async function persistFrame(gate: FrameGate, conversationId?: string): Promise<v
   }
 }
 
+
 function formatFrameGateInjection(gate: FrameGate): string {
   const head = `[RAMVALIDERING — LITHIC v13.3 §2 & §6 SRL]`;
   const metrics = `MSC=${gate.msc.toFixed(2)} (T*=0.714) | FZ=${gate.fz.toFixed(2)} FA=${gate.fa.toFixed(2)} FY=${gate.fy.toFixed(2)}`;
@@ -666,12 +669,15 @@ function formatFrameGateInjection(gate: FrameGate): string {
 async function recordFriction(
   description: string,
   category: string,
-  resistance_strength: number
+  resistance_strength: number,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Friction skipped: missing user context";
   const stem = description.slice(0, 40).replace(/[%_]/g, "");
   const { data: existing } = await supabase
     .from("memory_friction")
     .select("*")
+    .eq("user_id", userId)
     .eq("category", category)
     .ilike("description", `${stem}%`)
     .limit(1);
@@ -692,6 +698,7 @@ async function recordFriction(
   }
 
   const { error } = await supabase.from("memory_friction").insert({
+    user_id: userId,
     description,
     category,
     resistance_strength: Math.max(0.1, Math.min(1.0, resistance_strength)),
@@ -704,9 +711,12 @@ async function crystallizePattern(
   pattern_name: string,
   description: string,
   stability: number,
-  related_categories: string[] = []
+  related_categories: string[] = [],
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Crystallization skipped: missing user context";
   const { error } = await supabase.from("memory_vortex").insert({
+    user_id: userId,
     pattern_name,
     description,
     stability: Math.max(0.5, Math.min(1.0, stability)),
@@ -715,6 +725,7 @@ async function crystallizePattern(
   if (error) return `Crystallization failed: ${error.message}`;
   return `⬡ Pattern crystallized into VORTEX: "${pattern_name}" [stab=${stability}]`;
 }
+
 
 async function executeWebSearch(query: string): Promise<string> {
   try {
