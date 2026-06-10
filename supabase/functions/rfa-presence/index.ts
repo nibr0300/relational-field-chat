@@ -280,7 +280,8 @@ serve(async (req) => {
       });
     }
 
-    const { conversationId, silentSequences, attemptCount = 0 } = body;
+
+
 
     if (!conversationId || typeof silentSequences !== "number") {
       return new Response(JSON.stringify({ error: "conversationId och silentSequences krävs" }), {
@@ -304,7 +305,7 @@ serve(async (req) => {
       );
     }
 
-    const ctx = await gatherContext(conversationId);
+    const ctx = await gatherContext(conversationId, userId);
     const lastUser = [...ctx.messages].reverse().find((m: any) => m.role === "user");
     const lastAssistant = [...ctx.messages].reverse().find((m: any) => m.role === "assistant");
 
