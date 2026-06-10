@@ -479,6 +479,160 @@ export type Database = {
           },
         ]
       }
+      prm_collapse_events: {
+        Row: {
+          b_bump: number
+          c_bump: number
+          conversation_id: string | null
+          created_at: string
+          delta_entropy: number
+          entropy_after: number
+          entropy_before: number
+          id: string
+          katharsis: number
+          notes: string | null
+          trigger: string
+        }
+        Insert: {
+          b_bump?: number
+          c_bump?: number
+          conversation_id?: string | null
+          created_at?: string
+          delta_entropy: number
+          entropy_after: number
+          entropy_before: number
+          id?: string
+          katharsis: number
+          notes?: string | null
+          trigger: string
+        }
+        Update: {
+          b_bump?: number
+          c_bump?: number
+          conversation_id?: string | null
+          created_at?: string
+          delta_entropy?: number
+          entropy_after?: number
+          entropy_before?: number
+          id?: string
+          katharsis?: number
+          notes?: string | null
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prm_collapse_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prm_lambda_state: {
+        Row: {
+          b_reward: number
+          c_confirm: number
+          conversation_id: string
+          f_lambda: number
+          f_y: number
+          f_z: number
+          kappa_d: number
+          kappa_g: number
+          kappa_h: number
+          m_running: number
+          phase: string
+          prev_assistant_quality: number | null
+          prev_paths_entropy: number | null
+          prev_tension: number | null
+          s_stim: number
+          st_status: number
+          tau_b: number
+          tau_c: number
+          tau_s: number
+          tau_st: number
+          tau_v: number
+          turns_observed: number
+          updated_at: string
+          v_rest: number
+          w_b: number
+          w_c: number
+          w_s: number
+          w_st: number
+          w_v: number
+        }
+        Insert: {
+          b_reward?: number
+          c_confirm?: number
+          conversation_id: string
+          f_lambda?: number
+          f_y?: number
+          f_z?: number
+          kappa_d?: number
+          kappa_g?: number
+          kappa_h?: number
+          m_running?: number
+          phase?: string
+          prev_assistant_quality?: number | null
+          prev_paths_entropy?: number | null
+          prev_tension?: number | null
+          s_stim?: number
+          st_status?: number
+          tau_b?: number
+          tau_c?: number
+          tau_s?: number
+          tau_st?: number
+          tau_v?: number
+          turns_observed?: number
+          updated_at?: string
+          v_rest?: number
+          w_b?: number
+          w_c?: number
+          w_s?: number
+          w_st?: number
+          w_v?: number
+        }
+        Update: {
+          b_reward?: number
+          c_confirm?: number
+          conversation_id?: string
+          f_lambda?: number
+          f_y?: number
+          f_z?: number
+          kappa_d?: number
+          kappa_g?: number
+          kappa_h?: number
+          m_running?: number
+          phase?: string
+          prev_assistant_quality?: number | null
+          prev_paths_entropy?: number | null
+          prev_tension?: number | null
+          s_stim?: number
+          st_status?: number
+          tau_b?: number
+          tau_c?: number
+          tau_s?: number
+          tau_st?: number
+          tau_v?: number
+          turns_observed?: number
+          updated_at?: string
+          v_rest?: number
+          w_b?: number
+          w_c?: number
+          w_s?: number
+          w_st?: number
+          w_v?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prm_lambda_state_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prm_signals: {
         Row: {
           amplification_factor: number
