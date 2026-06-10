@@ -1461,14 +1461,16 @@ const LAMBDA_DEFAULTS: LambdaState = {
   turns_observed: 0, m_running: 0, phase: "standard",
 };
 
-async function fetchLambdaState(conversationId: string | undefined): Promise<LambdaState> {
-  if (!conversationId) return { ...LAMBDA_DEFAULTS };
+async function fetchLambdaState(conversationId: string | undefined, userId?: string | null): Promise<LambdaState> {
+  if (!conversationId || !userId) return { ...LAMBDA_DEFAULTS };
   try {
     const { data } = await supabase
       .from("prm_lambda_state")
       .select("*")
+      .eq("user_id", userId)
       .eq("conversation_id", conversationId)
       .maybeSingle();
+
     if (!data) return { ...LAMBDA_DEFAULTS };
     return {
       ...LAMBDA_DEFAULTS,
@@ -1637,10 +1639,12 @@ function evolveLambdaState(
 async function persistLambdaState(
   conversationId: string | undefined,
   state: LambdaState,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId) return;
+  if (!conversationId || !userId) return;
   try {
     await supabase.from("prm_lambda_state").upsert({
+      user_id: userId,
       conversation_id: conversationId,
       ...state,
       updated_at: new Date().toISOString(),
@@ -1653,10 +1657,12 @@ async function persistLambdaState(
 async function persistCollapseEvent(
   conversationId: string | undefined,
   ev: CollapseEvent | null,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId || !ev) return;
+  if (!conversationId || !ev || !userId) return;
   try {
     await supabase.from("prm_collapse_events").insert({
+      user_id: userId,
       conversation_id: conversationId,
       entropy_before: ev.entropy_before,
       entropy_after: ev.entropy_after,
@@ -1671,6 +1677,7 @@ async function persistCollapseEvent(
     console.error("Collapse persist failed:", e);
   }
 }
+
 
 function formatLambdaInjection(state: LambdaState, collapse: CollapseEvent | null): string {
   // Översätt tillstånd till KVALITATIV smak — aldrig siffror.
