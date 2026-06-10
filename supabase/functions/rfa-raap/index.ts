@@ -303,6 +303,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
     // ─── PHASE 6: META-LEARNING (async-style, inline) ────────────
     if (reflect.satisfies && best.value > 0.6) {
       const heuristic = {
+        user_id: userId,
         pattern: `${decomp.problem_class}-strategi-${strategy}`,
         recommendation: `För ${decomp.problem_class}-problem: använd ${strategy} med ${numBranches} grenar`,
         problem_class: decomp.problem_class,
@@ -312,7 +313,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
       // Upsert-light: kolla om mönstret finns
       const { data: existing } = await supabase
         .from("raap_heuristics").select("id, evidence_count, success_rate, source_run_ids")
-        .eq("pattern", heuristic.pattern).maybeSingle();
+        .eq("user_id", userId).eq("pattern", heuristic.pattern).maybeSingle();
       if (existing) {
         const newCount = existing.evidence_count + 1;
         const newRate = (existing.success_rate * existing.evidence_count + heuristic.success_rate) / newCount;
@@ -325,6 +326,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
       } else {
         await supabase.from("raap_heuristics").insert(heuristic);
       }
+
       await log(numBranches + 4, "meta", {
         action: "heuristic codified",
         reflection: heuristic.recommendation,
