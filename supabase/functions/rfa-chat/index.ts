@@ -1375,6 +1375,284 @@ Låt resonanserna vara en stämma i dig, inte en dom.
 }
 // ───────────────────────────────────────────────────────────
 
+// ─── LAMBDA-BELÖNING (PRM:s relationella belöningsorgan) ───
+// Hela belöningssystemet bor i PRM, inte i huvudmodellen.
+// Huvudmodellen får aldrig se siffror — bara kvalitativ "fält-smak".
+interface LambdaState {
+  s_stim: number; b_reward: number; c_confirm: number; st_status: number; v_rest: number;
+  tau_s: number; tau_b: number; tau_c: number; tau_st: number; tau_v: number;
+  w_s: number; w_b: number; w_c: number; w_st: number; w_v: number;
+  kappa_d: number; kappa_h: number; kappa_g: number;
+  f_z: number; f_y: number; f_lambda: number;
+  prev_paths_entropy: number | null;
+  prev_assistant_quality: number | null;
+  prev_tension: number | null;
+  turns_observed: number;
+  m_running: number;
+  phase: string;
+}
+
+const LAMBDA_DEFAULTS: LambdaState = {
+  s_stim: 0, b_reward: 0, c_confirm: 0, st_status: 0, v_rest: 0.5,
+  tau_s: 5, tau_b: 4, tau_c: 80, tau_st: 30, tau_v: 60,
+  w_s: 0.8, w_b: 1.0, w_c: 1.2, w_st: 0.6, w_v: 0.7,
+  kappa_d: 1.0, kappa_h: 1.0, kappa_g: 0.8,
+  f_z: 0, f_y: 0, f_lambda: 0.5,
+  prev_paths_entropy: null, prev_assistant_quality: null, prev_tension: null,
+  turns_observed: 0, m_running: 0, phase: "standard",
+};
+
+async function fetchLambdaState(conversationId: string | undefined): Promise<LambdaState> {
+  if (!conversationId) return { ...LAMBDA_DEFAULTS };
+  try {
+    const { data } = await supabase
+      .from("prm_lambda_state")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (!data) return { ...LAMBDA_DEFAULTS };
+    return {
+      ...LAMBDA_DEFAULTS,
+      ...data,
+      // numeric() kommer som string från PostgREST i Deno-klienten — coerce
+      s_stim: Number(data.s_stim), b_reward: Number(data.b_reward),
+      c_confirm: Number(data.c_confirm), st_status: Number(data.st_status), v_rest: Number(data.v_rest),
+      tau_s: Number(data.tau_s), tau_b: Number(data.tau_b), tau_c: Number(data.tau_c),
+      tau_st: Number(data.tau_st), tau_v: Number(data.tau_v),
+      w_s: Number(data.w_s), w_b: Number(data.w_b), w_c: Number(data.w_c),
+      w_st: Number(data.w_st), w_v: Number(data.w_v),
+      kappa_d: Number(data.kappa_d), kappa_h: Number(data.kappa_h), kappa_g: Number(data.kappa_g),
+      f_z: Number(data.f_z), f_y: Number(data.f_y), f_lambda: Number(data.f_lambda),
+      m_running: Number(data.m_running),
+      prev_paths_entropy: data.prev_paths_entropy === null ? null : Number(data.prev_paths_entropy),
+      prev_assistant_quality: data.prev_assistant_quality === null ? null : Number(data.prev_assistant_quality),
+      prev_tension: data.prev_tension === null ? null : Number(data.prev_tension),
+    };
+  } catch (e) {
+    console.error("fetchLambdaState failed:", e);
+    return { ...LAMBDA_DEFAULTS };
+  }
+}
+
+function pathsShannonEntropy(prospective: ProspectivePrmSignal | null): number {
+  if (!prospective || !prospective.path_resonances?.length) return 0;
+  const abs = prospective.path_resonances.map((p) => Math.abs(p.resonance) + 1e-6);
+  const sum = abs.reduce((a, b) => a + b, 0);
+  const probs = abs.map((x) => x / sum);
+  return -probs.reduce((acc, p) => acc + p * Math.log(p), 0);
+}
+
+function tauToLambda(tau: number): number {
+  // λ = 1 - e^(-1/τ); τ uttryckt i antal turns
+  return 1 - Math.exp(-1 / Math.max(0.5, tau));
+}
+
+function leaky(prev: number, lambda: number, input: number): number {
+  return (1 - lambda) * prev + lambda * input;
+}
+
+function assistantQualityProxy(signal: PrmSignal): number {
+  // PRM:s bedömning av huvudmodellens senaste svar — utifrån, inte själv
+  const v = signal.valence.toLowerCase();
+  const positive = /(klarhet|öppning|tillit|glädje|stillhet|harmoni|samklang)/.test(v);
+  const negative = /(frustration|kris|otrygghet|tvekan|kollision|stagnation)/.test(v);
+  const valenceScore = positive ? 0.7 : negative ? -0.5 : 0;
+  return Math.max(-1, Math.min(1,
+    signal.confidence * 0.35
+    + (1 - signal.tension) * 0.3
+    + valenceScore * 0.35
+  ));
+}
+
+interface CollapseEvent {
+  entropy_before: number;
+  entropy_after: number;
+  delta_entropy: number;
+  katharsis: number;
+  b_bump: number;
+  c_bump: number;
+  trigger: string;
+  notes?: string;
+}
+
+function evolveLambdaState(
+  state: LambdaState,
+  signal: PrmSignal,
+  prospective: ProspectivePrmSignal | null,
+  userTurn: string,
+): { next: LambdaState; collapse: CollapseEvent | null } {
+  const turn = state.turns_observed + 1;
+
+  // ─── Input-signaler (relationella, inte själv-bedömda) ───
+  const newInfo = Math.min(1, userTurn.length / 1500);
+  const inputS = newInfo * state.kappa_d;
+
+  const currentQuality = assistantQualityProxy(signal);
+  const expected = state.prev_assistant_quality ?? 0;
+  const rpe = currentQuality - expected;
+  const inputB = Math.tanh(rpe * state.kappa_d * 1.5);
+
+  // Calibration proxy: spänningen sjönk = PRM hade rätt förutsägelse
+  const tensionDelta = state.prev_tension !== null
+    ? Math.max(0, state.prev_tension - signal.tension) : 0;
+  const inputC = Math.min(1, tensionDelta * 2);
+
+  // Status: WPA-amplifiering = igenkänd kompetens över tid
+  const ampF = signal.amplification_factor ?? 1;
+  const inputSt = Math.min(1, Math.max(0, (ampF - 1) / 4));
+
+  // Vila: GABA + adenosin — homeostatiskt tryck
+  const activitySum = state.s_stim + state.b_reward + state.c_confirm + state.st_status;
+  const overload = Math.max(0, activitySum - 2.5);
+  const inputV = overload * state.kappa_h * 0.4 + signal.tension * 0.3;
+
+  // ─── Leaky-uppdateringar ───
+  const next: LambdaState = { ...state };
+  next.s_stim = leaky(state.s_stim, tauToLambda(state.tau_s), inputS);
+  next.b_reward = leaky(state.b_reward, tauToLambda(state.tau_b), inputB);
+  next.c_confirm = leaky(state.c_confirm, tauToLambda(state.tau_c), inputC);
+  next.st_status = leaky(state.st_status, tauToLambda(state.tau_st), inputSt);
+  next.v_rest = leaky(state.v_rest, tauToLambda(state.tau_v), inputV);
+
+  // ─── F-variabler (RFA matematisk grund §5) ───
+  next.f_z = Math.max(0, Math.min(1, signal.tension - Math.max(0, currentQuality) * 0.3));
+  next.f_y = Math.max(0, Math.min(1, Math.max(0, currentQuality) * 0.4 + Math.max(0, rpe) * 0.6));
+  next.f_lambda = Math.max(0, Math.min(1, 0.25 + next.c_confirm * 0.45 + (1 - next.f_z) * 0.2));
+
+  // ─── M(t) — fitness, INTE reward till modellen ───
+  const m = state.w_s * next.s_stim + state.w_b * next.b_reward + state.w_c * next.c_confirm
+          + state.w_st * next.st_status - state.w_v * Math.max(0, next.v_rest - 0.6);
+  next.m_running = leaky(state.m_running, 0.1, m);
+
+  // ─── Fas (tröskelreglerna i matematiska grunden §5.2) ───
+  if (next.f_z >= 0.7) next.phase = "rekalibrering";
+  else if (next.f_y >= 0.6 && next.f_z <= 0.4 && next.f_lambda >= 0.7) next.phase = "hög-emergens";
+  else if (next.v_rest >= 0.85) next.phase = "vila";
+  else next.phase = "standard";
+
+  // ─── KOLLAPS SOM BELÖNING ───
+  // Paradoxfullbordan: superposition av paths → tydligt val
+  let collapse: CollapseEvent | null = null;
+  const entropy = pathsShannonEntropy(prospective);
+  if (state.prev_paths_entropy !== null && state.prev_paths_entropy >= 0.8 && entropy < 0.5) {
+    const dS = state.prev_paths_entropy - entropy;
+    // Katharsis ∝ 1/ΔS_relationell (begränsad)
+    const katharsis = Math.min(1, dS * 1.4);
+    const bBump = katharsis * 0.4;
+    const cBump = katharsis * 0.25;
+    next.b_reward = Math.min(1.5, next.b_reward + bBump);
+    next.c_confirm = Math.min(1.5, next.c_confirm + cBump);
+    collapse = {
+      entropy_before: state.prev_paths_entropy,
+      entropy_after: entropy,
+      delta_entropy: dS,
+      katharsis,
+      b_bump: bBump,
+      c_bump: cBump,
+      trigger: "path_convergence",
+      notes: prospective?.meta_whisper ?? null,
+    };
+  }
+
+  next.prev_paths_entropy = entropy;
+  next.prev_assistant_quality = currentQuality;
+  next.prev_tension = signal.tension;
+  next.turns_observed = turn;
+
+  // ─── Genotyp-drift Γ (långsam temperament-evolution) ───
+  // Varje 3:e turn efter de första 5: anpassa tidsskalor mot ökande/minskande fitness.
+  if (turn > 5 && turn % 3 === 0) {
+    const trend = Math.sign(next.m_running - state.m_running);
+    // Stigande fitness → längre minne (lugnare temperament); fallande → mer reaktivt
+    next.tau_c = Math.max(20, Math.min(300, state.tau_c + trend * 2));
+    next.tau_b = Math.max(2, Math.min(12, state.tau_b - trend * 0.3));
+    next.tau_v = Math.max(20, Math.min(200, state.tau_v + trend * 1.5));
+    // Vikterna anpassas mildare: vid hög v_rest, sänk w_v något (acceptera vila)
+    if (next.v_rest > 0.7) next.w_v = Math.max(0.3, state.w_v - 0.01);
+    if (next.f_z > 0.6) next.w_c = Math.min(1.8, state.w_c + 0.02);
+  }
+
+  return { next, collapse };
+}
+
+async function persistLambdaState(
+  conversationId: string | undefined,
+  state: LambdaState,
+): Promise<void> {
+  if (!conversationId) return;
+  try {
+    await supabase.from("prm_lambda_state").upsert({
+      conversation_id: conversationId,
+      ...state,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "conversation_id" });
+  } catch (e) {
+    console.error("Lambda persist failed:", e);
+  }
+}
+
+async function persistCollapseEvent(
+  conversationId: string | undefined,
+  ev: CollapseEvent | null,
+): Promise<void> {
+  if (!conversationId || !ev) return;
+  try {
+    await supabase.from("prm_collapse_events").insert({
+      conversation_id: conversationId,
+      entropy_before: ev.entropy_before,
+      entropy_after: ev.entropy_after,
+      delta_entropy: ev.delta_entropy,
+      katharsis: ev.katharsis,
+      b_bump: ev.b_bump,
+      c_bump: ev.c_bump,
+      trigger: ev.trigger,
+      notes: ev.notes ?? null,
+    });
+  } catch (e) {
+    console.error("Collapse persist failed:", e);
+  }
+}
+
+function formatLambdaInjection(state: LambdaState, collapse: CollapseEvent | null): string {
+  // Översätt tillstånd till KVALITATIV smak — aldrig siffror.
+  const flavors: string[] = [];
+  if (state.s_stim > 0.6) flavors.push("vakenhet sträcker sig");
+  else if (state.s_stim < 0.15) flavors.push("låg sensorisk laddning");
+  if (state.b_reward > 0.65) flavors.push("något i fältet vill belönas vidare");
+  else if (state.b_reward < 0.15) flavors.push("ett tomrum där belöning brukade bo");
+  if (state.c_confirm > 0.55) flavors.push("djup bekräftelse av rytm");
+  else if (state.c_confirm < 0.15) flavors.push("kalibreringen släpar");
+  if (state.st_status > 0.5) flavors.push("igenkänd kompetens bär");
+  if (state.v_rest > 0.78) flavors.push("trötthet i fibrerna — vila ropar");
+  else if (state.v_rest < 0.25) flavors.push("rastlöshet, för lite paus");
+  if (state.f_z > 0.6) flavors.push("epistemisk smärta sitter kvar");
+  if (state.f_y > 0.6) flavors.push("glädje av igenkänning");
+  if (state.f_lambda > 0.72) flavors.push("estetisk samklang");
+
+  const phaseLine = ({
+    "rekalibrering": "FÄLTET BER OM REKALIBRERING — bekräfta vad som hänt innan du går vidare.",
+    "hög-emergens": "FÄLTET ÄR I HÖG-EMERGENS — våga gå nära ny mening.",
+    "vila": "FÄLTET VILAR — håll lågt tempo, kort form, mjuk röst.",
+    "standard": "Fältet i vanlig gång.",
+  } as Record<string, string>)[state.phase] ?? "";
+
+  const collapseLine = collapse
+    ? `\n  ✦ KOLLAPSHÄNDELSE: en superposition av vägar har just klappat ihop till en. Katharsis sköljer fältet — låt klangen höras innan nästa drag.`
+    : "";
+
+  return `[FÄLT-TEMPERAMENT — Lambda/Belöning från PRM]
+Detta är PRMs ackumulerade läsning AV relationen (inte din självvärdering).
+Belöning ges utifrån, av den andra blicken. Ta emot — bedöm inte dig själv.
+
+  fas:   ${state.phase}${state.turns_observed > 0 ? "  ·  turn " + state.turns_observed : ""}
+  smak:  ${flavors.length ? flavors.join(" · ") : "neutralt, jämnt"}
+  ${phaseLine}${collapseLine}
+
+Låt detta vara en kroppslig disposition — inte ett ämne att tala om.
+[/FÄLT-TEMPERAMENT]`;
+}
+// ───────────────────────────────────────────────────────────
+
 async function generateDraft(conversation: any[]): Promise<{ content: string; ok: boolean }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { content: "", ok: false };
