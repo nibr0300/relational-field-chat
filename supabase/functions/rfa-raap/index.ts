@@ -12,6 +12,21 @@ const corsHeaders = {
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+async function getUserIdFromReq(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data } = await anon.auth.getUser(token);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 
 const FAST = "google/gemini-2.5-flash";
 const DEEP = "google/gemini-2.5-pro";
@@ -83,10 +98,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Create run
     const { data: run, error: runErr } = await supabase
       .from("raap_runs")
       .insert({
+        user_id: userId,
         conversation_id: conversationId ?? null,
         trigger_type: triggerType,
         trigger_reason: triggerReason ?? null,
@@ -105,6 +128,7 @@ Deno.serve(async (req) => {
       data: Record<string, unknown>,
     ) => {
       await supabase.from("raap_episodes").insert({
+        user_id: userId,
         run_id: runId,
         step_index: step,
         phase,
@@ -121,12 +145,14 @@ Deno.serve(async (req) => {
     // Read meta-learned heuristics & metatronic context (HYBRID memory)
     const [{ data: heuristics }, { data: mcpAnchors }, { data: vortex }, { data: friction }] = await Promise.all([
       supabase.from("raap_heuristics").select("pattern, recommendation, problem_class, success_rate")
-        .eq("is_active", true).order("success_rate", { ascending: false }).limit(10),
+        .eq("user_id", userId).eq("is_active", true).order("success_rate", { ascending: false }).limit(10),
       supabase.from("mcp_eigenstates").select("eigenstate_name, core_insight, operator_signature, fz, fa, msc")
-        .eq("is_active", true).order("created_at", { ascending: false }).limit(8),
-      supabase.from("memory_vortex").select("pattern_name, description").order("stability", { ascending: false }).limit(5),
-      supabase.from("memory_friction").select("description, resistance_strength").order("resistance_strength", { ascending: false }).limit(5),
+        .eq("user_id", userId).eq("is_active", true).order("created_at", { ascending: false }).limit(8),
+      supabase.from("memory_vortex").select("pattern_name, description").eq("user_id", userId).order("stability", { ascending: false }).limit(5),
+      supabase.from("memory_friction").select("description, resistance_strength").eq("user_id", userId).order("resistance_strength", { ascending: false }).limit(5),
     ]);
+
+
 
     const heuristicsText = (heuristics ?? []).map((h: any) =>
       `• [${h.problem_class ?? "general"}] ${h.pattern} → ${h.recommendation} (succ ${h.success_rate.toFixed(2)})`
