@@ -14,6 +14,30 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+const supabaseAnon = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+);
+
+async function getUserIdFromReq(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const { data } = await supabaseAnon.auth.getUser(token);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function isOwnerUser(userId: string): Promise<boolean> {
+  const { data } = await supabase.from("rfa_runtime_state").select("value").eq("key", "owner_user_id").maybeSingle();
+  const ownerId = (data?.value as any)?.uid;
+  return ownerId === userId;
+}
+
+
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
@@ -58,8 +82,8 @@ function extractToolArgs(data: any): any {
   return JSON.parse(call.function.arguments);
 }
 
-async function fetchLog(scope: string, scopeRef: string | null): Promise<{ lines: string[]; raw: string }> {
-  let query = supabase.from("messages").select("role, content, created_at, conversation_id").order("created_at", { ascending: true }).limit(2000);
+async function fetchLog(scope: string, scopeRef: string | null, userId: string): Promise<{ lines: string[]; raw: string }> {
+  let query = supabase.from("messages").select("role, content, created_at, conversation_id").eq("user_id", userId).order("created_at", { ascending: true }).limit(2000);
   if (scope === "conversation" && scopeRef) query = query.eq("conversation_id", scopeRef);
   const { data, error } = await query;
   if (error) throw error;
@@ -73,6 +97,7 @@ async function fetchLog(scope: string, scopeRef: string | null): Promise<{ lines
   if (raw.length > MAX_LOG_CHARS) raw = raw.slice(0, MAX_LOG_CHARS) + "\n[... trunkerat ...]";
   return { lines, raw };
 }
+
 
 function splitHoldout(lines: string[]): { distill: string; validation: string } {
   const n = lines.length;
@@ -267,16 +292,25 @@ serve(async (req) => {
   try {
     const { trigger_type = "manual", scope = "all", scope_ref = null, dry_run = false } = await req.json().catch(() => ({}));
 
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const ownerWrite = await isOwnerUser(userId);
+
     const { data: runData, error: runErr } = await supabase
       .from("distillation_runs")
-      .insert({ trigger_type, scope, scope_ref, status: "running" })
+      .insert({ user_id: userId, trigger_type, scope, scope_ref, status: "running" })
       .select()
       .single();
     if (runErr) throw runErr;
     runId = runData.id;
 
     const protocol: any[] = [];
-    const { lines } = await fetchLog(scope, scope_ref);
+    const { lines } = await fetchLog(scope, scope_ref, userId);
+
     if (lines.length < 10) {
       await supabase.from("distillation_runs").update({
         status: "completed",
@@ -322,8 +356,9 @@ serve(async (req) => {
       if (passed.length === 0) { terminationReason = "no_validated_rules"; break; }
 
       let persisted = 0;
-      if (!dry_run) persisted = await persistRules(passed, cycle);
+      if (!dry_run && ownerWrite) persisted = await persistRules(passed, cycle);
       else persisted = passed.length;
+
 
       totalValidated += persisted;
       protocol.push({ cycle, layer: "L4", persisted, dry_run });
