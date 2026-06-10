@@ -326,15 +326,16 @@ const TOOLS = [
   },
 ];
 
-async function loadMemoryState(): Promise<string> {
+async function loadMemoryState(userId: string | null): Promise<string> {
   const [mcpRes, runtimeRes, coronaRes, eigenRes, limbusRes, vortexRes, frictionRes] = await Promise.all([
-    supabase.from("mcp_eigenstates").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(MCP_READ_LIMIT),
+    userId ? supabase.from("mcp_eigenstates").select("*").eq("user_id", userId).eq("is_active", true).order("created_at", { ascending: false }).limit(MCP_READ_LIMIT) : Promise.resolve({ data: [] as any[] }),
     supabase.from("rfa_runtime_state").select("value, updated_at").eq("key", "reset9_epoch").maybeSingle(),
-    supabase.from("memory_corona").select("*").order("created_at", { ascending: false }).limit(15),
-    supabase.from("memory_eigenstates").select("*").order("significance", { ascending: false }).limit(10),
-    supabase.from("memory_limbus").select("*").order("last_seen", { ascending: false }).limit(10),
-    supabase.from("memory_vortex").select("*").order("stability", { ascending: false }).limit(8),
-    supabase.from("memory_friction").select("*").order("resistance_strength", { ascending: false }).limit(8),
+    userId ? supabase.from("memory_corona").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(15) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_eigenstates").select("*").eq("user_id", userId).order("significance", { ascending: false }).limit(10) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_limbus").select("*").eq("user_id", userId).order("last_seen", { ascending: false }).limit(10) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_vortex").select("*").eq("user_id", userId).order("stability", { ascending: false }).limit(8) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_friction").select("*").eq("user_id", userId).order("resistance_strength", { ascending: false }).limit(8) : Promise.resolve({ data: [] as any[] }),
+
   ]);
 
   let block = "\n\n[METATRONIC MEMORY STATE]\n";
@@ -445,9 +446,12 @@ async function saveEigenstate(
   content: string,
   category: string,
   significance: number,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Failed to save: missing user context";
   const { error } = await supabase.from("memory_corona").insert({
+    user_id: userId,
     content,
     category,
     significance: Math.max(0.5, Math.min(1.0, significance)),
@@ -456,6 +460,7 @@ async function saveEigenstate(
   if (error) return `Failed to save: ${error.message}`;
   return `Saved to CORONA: "${content.slice(0, 60)}..." [${category}, σ=${significance}]`;
 }
+
 
 function slugEigenstateName(text: string): string {
   return text
