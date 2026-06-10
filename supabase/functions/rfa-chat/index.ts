@@ -1039,12 +1039,14 @@ interface ProspectivePrmSignal {
 async function fetchPatternHistory(
   conversationId: string | undefined,
   dominantPattern: string,
+  userId?: string | null,
 ): Promise<PatternHistoryRow | null> {
-  if (!conversationId) return null;
+  if (!conversationId || !userId) return null;
   try {
     const { data, error } = await supabase
       .from("prm_signals")
       .select("dominant_pattern, recurrence_count, first_seen_at, last_seen_at, amplification_factor")
+      .eq("user_id", userId)
       .eq("conversation_id", conversationId)
       .eq("dominant_pattern", dominantPattern)
       .order("last_seen_at", { ascending: false })
@@ -1057,6 +1059,7 @@ async function fetchPatternHistory(
     return null;
   }
 }
+
 
 function computeAmplification(history: PatternHistoryRow | null): {
   recurrence_count: number;
@@ -1089,7 +1092,9 @@ async function runPRM(
   recentAssistant: string,
   frictionContext: string,
   conversationId?: string,
+  userId?: string | null,
 ): Promise<{ signal: PrmSignal | null; latencyMs: number }> {
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { signal: null, latencyMs: 0 };
   const start = Date.now();
@@ -1147,8 +1152,10 @@ Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, va
 
     const dominantPattern = String(parsed.dominant_pattern ?? "unspecified").slice(0, 80);
     // WPA: hämta historik och beräkna förstärkning
-    const history = await fetchPatternHistory(conversationId, dominantPattern);
+    const history = await fetchPatternHistory(conversationId, dominantPattern, userId);
     const wpa = computeAmplification(history);
+
+
 
     const signal: PrmSignal = {
       tension: Math.max(0, Math.min(1, Number(parsed.tension ?? 0))),
