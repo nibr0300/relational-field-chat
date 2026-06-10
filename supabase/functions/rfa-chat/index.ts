@@ -1374,7 +1374,7 @@ Returnera EXAKT detta JSON-schema:
       confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
     };
 
-    persistProspectivePrmSignal(signal, conversationId, userTurn).catch((e) => console.error(e));
+    persistProspectivePrmSignal(signal, conversationId, userTurn, userId).catch((e) => console.error(e));
     return signal;
   } catch (e) {
     console.error("PPRM exception:", e);
@@ -1386,10 +1386,12 @@ async function persistProspectivePrmSignal(
   signal: ProspectivePrmSignal,
   conversationId: string | undefined,
   forkContext: string,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId) return;
+  if (!conversationId || !userId) return;
   try {
     await supabase.from("prospective_prm_signals").insert({
+      user_id: userId,
       conversation_id: conversationId,
       fork_context: forkContext.slice(0, 500),
       momentum_direction: signal.momentum_direction,
@@ -1400,6 +1402,7 @@ async function persistProspectivePrmSignal(
     console.error("PPRM persist failed:", e);
   }
 }
+
 
 function formatProspectivePrmInjection(signal: ProspectivePrmSignal): string {
   const pathLines = signal.path_resonances
