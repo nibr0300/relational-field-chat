@@ -341,10 +341,12 @@ serve(async (req) => {
     // Spara initiativmeddelandet i konversationen om det skapades
     if (result.shouldInitiate && result.message) {
       await supabase.from("messages").insert({
+        user_id: userId,
         conversation_id: conversationId,
         role: "assistant",
         content: `🌙 ${result.message}`,
       });
+
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
