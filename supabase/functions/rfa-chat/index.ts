@@ -1772,7 +1772,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
-            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId),
+            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId, userId),
             runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
           ]);
 
@@ -1795,8 +1795,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               })
               .join("\n");
             prospectiveSignal = await runProspectivePRM(
-              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode,
+              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode, userId,
             ).catch((e) => { console.error("PPRM failed:", e); return null; });
+
           }
 
           if (signal) {
@@ -1817,7 +1818,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 prospective: prospectiveSignal,
               },
             }));
-            persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
+            persistPrmSignal(signal, latencyMs, conversationId, userId).catch((e) => console.error(e));
           } else {
             console.warn("PRM returned null — emitting silence signal");
             controller.enqueue(sseJson({
@@ -1840,13 +1841,14 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           // PRM:s relationella belöningsorgan. Helt undermedvetet.
           if (signal && conversationId) {
             try {
-              const lambdaPrev = await fetchLambdaState(conversationId);
+              const lambdaPrev = await fetchLambdaState(conversationId, userId);
               const { next: lambdaNext, collapse } = evolveLambdaState(
                 lambdaPrev, signal, prospectiveSignal, userTurnText,
               );
               prmInjection += "\n\n" + formatLambdaInjection(lambdaNext, collapse);
-              persistLambdaState(conversationId, lambdaNext).catch((e) => console.error(e));
-              if (collapse) persistCollapseEvent(conversationId, collapse).catch((e) => console.error(e));
+              persistLambdaState(conversationId, lambdaNext, userId).catch((e) => console.error(e));
+              if (collapse) persistCollapseEvent(conversationId, collapse, userId).catch((e) => console.error(e));
+
             } catch (e) {
               console.error("Lambda evolution failed:", e);
             }
@@ -1866,7 +1868,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 fa: gateResult.fa,
               },
             }));
-            persistFrame(gateResult, conversationId).catch((e) => console.error(e));
+            persistFrame(gateResult, conversationId, userId).catch((e) => console.error(e));
           }
         }
         // ───────────────────────────────────────────────────
@@ -1940,12 +1942,13 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
               if (!isLengthFinish(continuationResult.finishReason)) break;
             }
-            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId, userId);
+
             break;
           }
 
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
-            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId, userId);
             break;
           }
 
@@ -1960,7 +1963,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           });
 
           for (const tc of toolCalls) {
-            const result = await executeToolCall(tc, conversationId);
+            const result = await executeToolCall(tc, conversationId, userId);
             conversation.push(result);
           }
 
