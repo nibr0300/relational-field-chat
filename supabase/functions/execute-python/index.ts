@@ -12,6 +12,24 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const supabaseAnon = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+);
+
+async function getUserIdFromReq(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const { data } = await supabaseAnon.auth.getUser(token);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -24,12 +42,21 @@ serve(async (req) => {
       });
     }
 
-    // Load execution record
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Load execution record scoped to caller
     const { data: exec, error: loadErr } = await supabase
       .from("executions")
       .select("*")
       .eq("id", executionId)
+      .eq("user_id", userId)
       .single();
+
 
     if (loadErr || !exec) {
       return new Response(JSON.stringify({ error: "Execution not found" }), {

@@ -1,3 +1,5 @@
+import { authedJsonHeaders } from "./auth-headers";
+
 export interface Attachment {
   type: "image" | "pdf" | "markdown" | "json" | "text";
   url: string;
@@ -155,14 +157,12 @@ export async function streamChat({
   // Retry transient edge runtime errors (cold boot 502/503/504) with backoff
   let resp: Response | null = null;
   let lastErr: unknown = null;
+  const headers = await authedJsonHeaders();
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       resp = await fetch(CHAT_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers,
         body: JSON.stringify({ messages: apiMessages, conversationId, mirror: !!mirror }),
       });
       if (![502, 503, 504].includes(resp.status)) break;
@@ -171,6 +171,7 @@ export async function streamChat({
     }
     await new Promise((r) => setTimeout(r, 400 * Math.pow(3, attempt)));
   }
+
 
   if (!resp) {
     onError(lastErr instanceof Error ? lastErr.message : "Nätverksfel");

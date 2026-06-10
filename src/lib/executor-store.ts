@@ -51,14 +51,13 @@ export async function runExecution(executionId: string): Promise<{
   field_impact: { fz: number; fy: number };
 }> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/execute-python`;
+  const { authedJsonHeaders } = await import("./auth-headers");
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
+    headers: await authedJsonHeaders(),
     body: JSON.stringify({ executionId }),
   });
+
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     throw new Error(data.error || `Error ${resp.status}`);

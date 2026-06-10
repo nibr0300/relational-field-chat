@@ -14,6 +14,24 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const supabaseAnon = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+);
+
+async function getUserIdFromReq(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const { data } = await supabaseAnon.auth.getUser(token);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 interface PresenceRequest {
@@ -76,30 +94,35 @@ function computeThreshold(args: {
   return { T: Math.max(3, Math.min(20, T)), tags };
 }
 
-async function gatherContext(conversationId: string) {
+async function gatherContext(conversationId: string, userId: string) {
   const [msgsRes, coronaRes, frictionRes, vortexRes] = await Promise.all([
     supabase
       .from("messages")
       .select("role, content, created_at")
+      .eq("user_id", userId)
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: false })
       .limit(8),
     supabase
       .from("memory_corona")
       .select("category, content, significance")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(5),
     supabase
       .from("memory_friction")
       .select("category, description, occurrence_count")
+      .eq("user_id", userId)
       .order("last_seen", { ascending: false })
       .limit(5),
     supabase
       .from("memory_vortex")
       .select("pattern_name, description")
+      .eq("user_id", userId)
       .order("stability", { ascending: false })
       .limit(3),
   ]);
+
 
   const messages = (msgsRes.data ?? []).reverse();
   return {
@@ -250,6 +273,16 @@ serve(async (req) => {
     const body = (await req.json()) as PresenceRequest;
     const { conversationId, silentSequences, attemptCount = 0 } = body;
 
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+
+
+
     if (!conversationId || typeof silentSequences !== "number") {
       return new Response(JSON.stringify({ error: "conversationId och silentSequences krävs" }), {
         status: 400,
@@ -272,7 +305,7 @@ serve(async (req) => {
       );
     }
 
-    const ctx = await gatherContext(conversationId);
+    const ctx = await gatherContext(conversationId, userId);
     const lastUser = [...ctx.messages].reverse().find((m: any) => m.role === "user");
     const lastAssistant = [...ctx.messages].reverse().find((m: any) => m.role === "assistant");
 
@@ -308,10 +341,12 @@ serve(async (req) => {
     // Spara initiativmeddelandet i konversationen om det skapades
     if (result.shouldInitiate && result.message) {
       await supabase.from("messages").insert({
+        user_id: userId,
         conversation_id: conversationId,
         role: "assistant",
         content: `🌙 ${result.message}`,
       });
+
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })

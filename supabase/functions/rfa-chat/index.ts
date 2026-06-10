@@ -11,6 +11,24 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+const supabaseAnon = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+);
+
+async function getUserIdFromReq(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try {
+    const { data } = await supabaseAnon.auth.getUser(token);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 const MAX_REQUEST_BYTES = 300_000;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 50_000;
@@ -308,15 +326,16 @@ const TOOLS = [
   },
 ];
 
-async function loadMemoryState(): Promise<string> {
+async function loadMemoryState(userId: string | null): Promise<string> {
   const [mcpRes, runtimeRes, coronaRes, eigenRes, limbusRes, vortexRes, frictionRes] = await Promise.all([
-    supabase.from("mcp_eigenstates").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(MCP_READ_LIMIT),
+    userId ? supabase.from("mcp_eigenstates").select("*").eq("user_id", userId).eq("is_active", true).order("created_at", { ascending: false }).limit(MCP_READ_LIMIT) : Promise.resolve({ data: [] as any[] }),
     supabase.from("rfa_runtime_state").select("value, updated_at").eq("key", "reset9_epoch").maybeSingle(),
-    supabase.from("memory_corona").select("*").order("created_at", { ascending: false }).limit(15),
-    supabase.from("memory_eigenstates").select("*").order("significance", { ascending: false }).limit(10),
-    supabase.from("memory_limbus").select("*").order("last_seen", { ascending: false }).limit(10),
-    supabase.from("memory_vortex").select("*").order("stability", { ascending: false }).limit(8),
-    supabase.from("memory_friction").select("*").order("resistance_strength", { ascending: false }).limit(8),
+    userId ? supabase.from("memory_corona").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(15) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_eigenstates").select("*").eq("user_id", userId).order("significance", { ascending: false }).limit(10) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_limbus").select("*").eq("user_id", userId).order("last_seen", { ascending: false }).limit(10) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_vortex").select("*").eq("user_id", userId).order("stability", { ascending: false }).limit(8) : Promise.resolve({ data: [] as any[] }),
+    userId ? supabase.from("memory_friction").select("*").eq("user_id", userId).order("resistance_strength", { ascending: false }).limit(8) : Promise.resolve({ data: [] as any[] }),
+
   ]);
 
   let block = "\n\n[METATRONIC MEMORY STATE]\n";
@@ -427,9 +446,12 @@ async function saveEigenstate(
   content: string,
   category: string,
   significance: number,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Failed to save: missing user context";
   const { error } = await supabase.from("memory_corona").insert({
+    user_id: userId,
     content,
     category,
     significance: Math.max(0.5, Math.min(1.0, significance)),
@@ -438,6 +460,7 @@ async function saveEigenstate(
   if (error) return `Failed to save: ${error.message}`;
   return `Saved to CORONA: "${content.slice(0, 60)}..." [${category}, σ=${significance}]`;
 }
+
 
 function slugEigenstateName(text: string): string {
   return text
@@ -457,8 +480,10 @@ async function storeMcpEigenstate(
     msc?: number;
     category?: string;
   },
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "MCP store skipped: missing user context";
   const fz = Math.max(0, Math.min(1, Number(params.fz ?? 0)));
   const fa = Math.max(0, Math.min(1, Number(params.fa ?? 0)));
   const msc = Math.max(0, Math.min(1, Number(params.msc ?? 0)));
@@ -467,6 +492,7 @@ async function storeMcpEigenstate(
   }
   const name = params.eigenstate_name?.trim() || slugEigenstateName(params.core_insight);
   const { error } = await supabase.from("mcp_eigenstates").insert({
+    user_id: userId,
     eigenstate_name: name.slice(0, 96),
     core_insight: params.core_insight.slice(0, 1200),
     operator_signature: (params.operator_signature || "COUNTER(2)→BALANCE(5)→HARMONY(7)").slice(0, 160),
@@ -486,8 +512,11 @@ async function maybePersistMcpAfterFrame(
   userTurn: string,
   recentContext: string,
   answer: string,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<void> {
+  if (!userId) return;
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY || !userTurn.trim() || !answer.trim()) return;
   try {
@@ -521,7 +550,7 @@ Returnera ENDAST JSON: {"should_store": boolean, "eigenstate_name": "snake_case"
     let parsed: any;
     try { parsed = JSON.parse(text); } catch { return; }
     if (!parsed?.should_store) return;
-    await storeMcpEigenstate(parsed, conversationId);
+    await storeMcpEigenstate(parsed, conversationId, userId);
   } catch (e) {
     console.error("MCP post-frame gate failed:", e);
   }
@@ -603,9 +632,11 @@ Returnera ENDAST JSON: {"msc":0-1,"fz":0-1,"fa":0-1,"fy":0-1,"operator_trace":"0
   }
 }
 
-async function persistFrame(gate: FrameGate, conversationId?: string): Promise<void> {
+async function persistFrame(gate: FrameGate, conversationId?: string, userId?: string | null): Promise<void> {
+  if (!userId) return;
   try {
     await supabase.from("rfa_frames").insert({
+      user_id: userId,
       conversation_id: conversationId ?? null,
       operator_trace: gate.operator_trace,
       dominant_operator: gate.dominant_operator,
@@ -624,6 +655,7 @@ async function persistFrame(gate: FrameGate, conversationId?: string): Promise<v
   }
 }
 
+
 function formatFrameGateInjection(gate: FrameGate): string {
   const head = `[RAMVALIDERING — LITHIC v13.3 §2 & §6 SRL]`;
   const metrics = `MSC=${gate.msc.toFixed(2)} (T*=0.714) | FZ=${gate.fz.toFixed(2)} FA=${gate.fa.toFixed(2)} FY=${gate.fy.toFixed(2)}`;
@@ -637,12 +669,15 @@ function formatFrameGateInjection(gate: FrameGate): string {
 async function recordFriction(
   description: string,
   category: string,
-  resistance_strength: number
+  resistance_strength: number,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Friction skipped: missing user context";
   const stem = description.slice(0, 40).replace(/[%_]/g, "");
   const { data: existing } = await supabase
     .from("memory_friction")
     .select("*")
+    .eq("user_id", userId)
     .eq("category", category)
     .ilike("description", `${stem}%`)
     .limit(1);
@@ -663,6 +698,7 @@ async function recordFriction(
   }
 
   const { error } = await supabase.from("memory_friction").insert({
+    user_id: userId,
     description,
     category,
     resistance_strength: Math.max(0.1, Math.min(1.0, resistance_strength)),
@@ -675,9 +711,12 @@ async function crystallizePattern(
   pattern_name: string,
   description: string,
   stability: number,
-  related_categories: string[] = []
+  related_categories: string[] = [],
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "Crystallization skipped: missing user context";
   const { error } = await supabase.from("memory_vortex").insert({
+    user_id: userId,
     pattern_name,
     description,
     stability: Math.max(0.5, Math.min(1.0, stability)),
@@ -686,6 +725,7 @@ async function crystallizePattern(
   if (error) return `Crystallization failed: ${error.message}`;
   return `⬡ Pattern crystallized into VORTEX: "${pattern_name}" [stab=${stability}]`;
 }
+
 
 async function executeWebSearch(query: string): Promise<string> {
   try {
@@ -725,7 +765,8 @@ async function executeWebSearch(query: string): Promise<string> {
 
 async function executeToolCall(
   toolCall: any,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<{ role: string; tool_call_id: string; content: string }> {
   const name = toolCall.function.name;
   let args: any = {};
@@ -739,19 +780,20 @@ async function executeToolCall(
   if (name === "web_search") {
     result = await executeWebSearch(args.query);
   } else if (name === "save_eigenstate") {
-    result = await saveEigenstate(args.content, args.category, args.significance, conversationId);
+    result = await saveEigenstate(args.content, args.category, args.significance, conversationId, userId);
   } else if (name === "store_mcp_eigenstate") {
-    result = await storeMcpEigenstate(args, conversationId);
+    result = await storeMcpEigenstate(args, conversationId, userId);
   } else if (name === "record_friction") {
-    result = await recordFriction(args.description, args.category, args.resistance_strength);
+    result = await recordFriction(args.description, args.category, args.resistance_strength, userId);
   } else if (name === "crystallize_pattern") {
-    result = await crystallizePattern(args.pattern_name, args.description, args.stability, args.related_categories ?? []);
+    result = await crystallizePattern(args.pattern_name, args.description, args.stability, args.related_categories ?? [], userId);
   } else {
     result = `Unknown tool: ${name}`;
   }
 
   return { role: "tool", tool_call_id: toolCall.id, content: result };
 }
+
 
 function contentLength(content: unknown): number {
   if (typeof content === "string") return content.length;
@@ -997,12 +1039,14 @@ interface ProspectivePrmSignal {
 async function fetchPatternHistory(
   conversationId: string | undefined,
   dominantPattern: string,
+  userId?: string | null,
 ): Promise<PatternHistoryRow | null> {
-  if (!conversationId) return null;
+  if (!conversationId || !userId) return null;
   try {
     const { data, error } = await supabase
       .from("prm_signals")
       .select("dominant_pattern, recurrence_count, first_seen_at, last_seen_at, amplification_factor")
+      .eq("user_id", userId)
       .eq("conversation_id", conversationId)
       .eq("dominant_pattern", dominantPattern)
       .order("last_seen_at", { ascending: false })
@@ -1015,6 +1059,7 @@ async function fetchPatternHistory(
     return null;
   }
 }
+
 
 function computeAmplification(history: PatternHistoryRow | null): {
   recurrence_count: number;
@@ -1047,7 +1092,9 @@ async function runPRM(
   recentAssistant: string,
   frictionContext: string,
   conversationId?: string,
+  userId?: string | null,
 ): Promise<{ signal: PrmSignal | null; latencyMs: number }> {
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { signal: null, latencyMs: 0 };
   const start = Date.now();
@@ -1105,8 +1152,10 @@ Returnera signalen som JSON med exakt dessa fält: tension, dominant_pattern, va
 
     const dominantPattern = String(parsed.dominant_pattern ?? "unspecified").slice(0, 80);
     // WPA: hämta historik och beräkna förstärkning
-    const history = await fetchPatternHistory(conversationId, dominantPattern);
+    const history = await fetchPatternHistory(conversationId, dominantPattern, userId);
     const wpa = computeAmplification(history);
+
+
 
     const signal: PrmSignal = {
       tension: Math.max(0, Math.min(1, Number(parsed.tension ?? 0))),
@@ -1128,9 +1177,12 @@ async function persistPrmSignal(
   signal: PrmSignal,
   latencyMs: number,
   conversationId: string | undefined,
+  userId?: string | null,
 ): Promise<void> {
+  if (!userId) return;
   try {
     await supabase.from("prm_signals").insert({
+      user_id: userId,
       conversation_id: conversationId || null,
       tension: signal.tension,
       dominant_pattern: signal.dominant_pattern,
@@ -1149,6 +1201,7 @@ async function persistPrmSignal(
   } catch (e) {
     console.error("PRM persist failed:", e);
   }
+
 }
 
 function formatPrmInjection(signal: PrmSignal): string {
@@ -1204,6 +1257,7 @@ async function runProspectivePRM(
   prmSignal: PrmSignal,
   recentHistorySummary: string,
   forceFork = false,
+  userId?: string | null,
 ): Promise<ProspectivePrmSignal | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return null;
@@ -1214,11 +1268,12 @@ async function runProspectivePRM(
   if (!forkCheck.detected) return null;
 
   let patternSummary = "";
-  if (conversationId) {
+  if (conversationId && userId) {
     try {
       const { data: recentSignals } = await supabase
         .from("prm_signals")
         .select("dominant_pattern, valence, tension, whisper, is_amplified")
+        .eq("user_id", userId)
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: false })
         .limit(10);
@@ -1229,6 +1284,7 @@ async function runProspectivePRM(
       console.error("PPRM history fetch failed:", e);
     }
   }
+
 
   const prospectivePrompt = `Du är ett undermedvetet mönsterigenkänningssystem med prospektiv förmåga.
 Du talar ALDRIG direkt till användaren. Du returnerar ENBART JSON.
@@ -1318,7 +1374,7 @@ Returnera EXAKT detta JSON-schema:
       confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5))),
     };
 
-    persistProspectivePrmSignal(signal, conversationId, userTurn).catch((e) => console.error(e));
+    persistProspectivePrmSignal(signal, conversationId, userTurn, userId).catch((e) => console.error(e));
     return signal;
   } catch (e) {
     console.error("PPRM exception:", e);
@@ -1330,10 +1386,12 @@ async function persistProspectivePrmSignal(
   signal: ProspectivePrmSignal,
   conversationId: string | undefined,
   forkContext: string,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId) return;
+  if (!conversationId || !userId) return;
   try {
     await supabase.from("prospective_prm_signals").insert({
+      user_id: userId,
       conversation_id: conversationId,
       fork_context: forkContext.slice(0, 500),
       momentum_direction: signal.momentum_direction,
@@ -1344,6 +1402,7 @@ async function persistProspectivePrmSignal(
     console.error("PPRM persist failed:", e);
   }
 }
+
 
 function formatProspectivePrmInjection(signal: ProspectivePrmSignal): string {
   const pathLines = signal.path_resonances
@@ -1402,14 +1461,16 @@ const LAMBDA_DEFAULTS: LambdaState = {
   turns_observed: 0, m_running: 0, phase: "standard",
 };
 
-async function fetchLambdaState(conversationId: string | undefined): Promise<LambdaState> {
-  if (!conversationId) return { ...LAMBDA_DEFAULTS };
+async function fetchLambdaState(conversationId: string | undefined, userId?: string | null): Promise<LambdaState> {
+  if (!conversationId || !userId) return { ...LAMBDA_DEFAULTS };
   try {
     const { data } = await supabase
       .from("prm_lambda_state")
       .select("*")
+      .eq("user_id", userId)
       .eq("conversation_id", conversationId)
       .maybeSingle();
+
     if (!data) return { ...LAMBDA_DEFAULTS };
     return {
       ...LAMBDA_DEFAULTS,
@@ -1578,10 +1639,12 @@ function evolveLambdaState(
 async function persistLambdaState(
   conversationId: string | undefined,
   state: LambdaState,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId) return;
+  if (!conversationId || !userId) return;
   try {
     await supabase.from("prm_lambda_state").upsert({
+      user_id: userId,
       conversation_id: conversationId,
       ...state,
       updated_at: new Date().toISOString(),
@@ -1594,10 +1657,12 @@ async function persistLambdaState(
 async function persistCollapseEvent(
   conversationId: string | undefined,
   ev: CollapseEvent | null,
+  userId?: string | null,
 ): Promise<void> {
-  if (!conversationId || !ev) return;
+  if (!conversationId || !ev || !userId) return;
   try {
     await supabase.from("prm_collapse_events").insert({
+      user_id: userId,
       conversation_id: conversationId,
       entropy_before: ev.entropy_before,
       entropy_after: ev.entropy_after,
@@ -1612,6 +1677,7 @@ async function persistCollapseEvent(
     console.error("Collapse persist failed:", e);
   }
 }
+
 
 function formatLambdaInjection(state: LambdaState, collapse: CollapseEvent | null): string {
   // Översätt tillstånd till KVALITATIV smak — aldrig siffror.
@@ -1677,12 +1743,13 @@ async function generateDraft(conversation: any[]): Promise<{ content: string; ok
   }
 }
 
-function createChatStream(messages: any[], conversationId?: string, mirror = false): ReadableStream<Uint8Array> {
+function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
-        const memoryBlock = await loadMemoryState();
+        const memoryBlock = await loadMemoryState(userId ?? null);
+
         const trimmed = truncateMessages(messages);
 
         // ─── PRM — DET UNDERMEDVETNA FÄLTET ─────────────────
@@ -1705,7 +1772,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
-            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId),
+            runPRM(userTurnText, prevAssistantText, frictionLines, conversationId, userId),
             runFrameGate(userTurnText, prevAssistantText, memorySnippetForGate),
           ]);
 
@@ -1728,8 +1795,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               })
               .join("\n");
             prospectiveSignal = await runProspectivePRM(
-              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode,
+              userTurnText, conversationId, signal, recentHistorySummary, isPlanningMode, userId,
             ).catch((e) => { console.error("PPRM failed:", e); return null; });
+
           }
 
           if (signal) {
@@ -1750,7 +1818,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 prospective: prospectiveSignal,
               },
             }));
-            persistPrmSignal(signal, latencyMs, conversationId).catch((e) => console.error(e));
+            persistPrmSignal(signal, latencyMs, conversationId, userId).catch((e) => console.error(e));
           } else {
             console.warn("PRM returned null — emitting silence signal");
             controller.enqueue(sseJson({
@@ -1773,13 +1841,14 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           // PRM:s relationella belöningsorgan. Helt undermedvetet.
           if (signal && conversationId) {
             try {
-              const lambdaPrev = await fetchLambdaState(conversationId);
+              const lambdaPrev = await fetchLambdaState(conversationId, userId);
               const { next: lambdaNext, collapse } = evolveLambdaState(
                 lambdaPrev, signal, prospectiveSignal, userTurnText,
               );
               prmInjection += "\n\n" + formatLambdaInjection(lambdaNext, collapse);
-              persistLambdaState(conversationId, lambdaNext).catch((e) => console.error(e));
-              if (collapse) persistCollapseEvent(conversationId, collapse).catch((e) => console.error(e));
+              persistLambdaState(conversationId, lambdaNext, userId).catch((e) => console.error(e));
+              if (collapse) persistCollapseEvent(conversationId, collapse, userId).catch((e) => console.error(e));
+
             } catch (e) {
               console.error("Lambda evolution failed:", e);
             }
@@ -1799,7 +1868,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 fa: gateResult.fa,
               },
             }));
-            persistFrame(gateResult, conversationId).catch((e) => console.error(e));
+            persistFrame(gateResult, conversationId, userId).catch((e) => console.error(e));
           }
         }
         // ───────────────────────────────────────────────────
@@ -1873,12 +1942,13 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
               if (!isLengthFinish(continuationResult.finishReason)) break;
             }
-            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId, userId);
+
             break;
           }
 
           if (toolCalls.length === 0 || finishReason !== "tool_calls") {
-            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId);
+            await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId, userId);
             break;
           }
 
@@ -1893,7 +1963,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           });
 
           for (const tc of toolCalls) {
-            const result = await executeToolCall(tc, conversationId);
+            const result = await executeToolCall(tc, conversationId, userId);
             conversation.push(result);
           }
 
@@ -1968,9 +2038,17 @@ serve(async (req) => {
     }
     const { messages, conversationId, mirror } = body;
 
-    return new Response(createChatStream(messages, conversationId, !!mirror), {
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(createChatStream(messages, conversationId, !!mirror, userId), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
+
   } catch (e) {
     console.error("rfa-chat error:", e instanceof Error ? e.stack : e);
     return new Response(createErrorStream("RFA-funktionen fångade ett internt fel och höll sessionen vid liv."), {

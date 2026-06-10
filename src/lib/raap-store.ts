@@ -54,14 +54,13 @@ export async function invokeRaap(params: {
   context?: string;
 }): Promise<RaapResult> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-raap`;
+  const { authedJsonHeaders } = await import("./auth-headers");
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
+    headers: await authedJsonHeaders(),
     body: JSON.stringify(params),
   });
+
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     throw new Error(data.error || `RAAP error ${resp.status}`);

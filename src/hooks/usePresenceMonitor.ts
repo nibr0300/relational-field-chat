@@ -69,18 +69,17 @@ export function usePresenceMonitor({ conversationId, enabled, onInitiative }: Pr
 
       inFlightRef.current = true;
       try {
+        const { authedJsonHeaders } = await import("@/lib/auth-headers");
         const resp = await fetch(PRESENCE_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers: await authedJsonHeaders(),
           body: JSON.stringify({
             conversationId,
             silentSequences: sequencesRef.current,
             attemptCount: attemptCountRef.current,
           }),
         });
+
         if (!resp.ok) {
           nextCheckAtRef.current = sequencesRef.current + 10;
           return;
