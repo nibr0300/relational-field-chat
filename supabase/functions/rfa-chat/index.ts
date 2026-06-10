@@ -1743,12 +1743,13 @@ async function generateDraft(conversation: any[]): Promise<{ content: string; ok
   }
 }
 
-function createChatStream(messages: any[], conversationId?: string, mirror = false): ReadableStream<Uint8Array> {
+function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
-        const memoryBlock = await loadMemoryState();
+        const memoryBlock = await loadMemoryState(userId ?? null);
+
         const trimmed = truncateMessages(messages);
 
         // ─── PRM — DET UNDERMEDVETNA FÄLTET ─────────────────
