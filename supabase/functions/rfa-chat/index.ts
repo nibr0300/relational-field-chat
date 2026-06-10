@@ -550,7 +550,7 @@ Returnera ENDAST JSON: {"should_store": boolean, "eigenstate_name": "snake_case"
     let parsed: any;
     try { parsed = JSON.parse(text); } catch { return; }
     if (!parsed?.should_store) return;
-    await storeMcpEigenstate(parsed, conversationId);
+    await storeMcpEigenstate(parsed, conversationId, userId);
   } catch (e) {
     console.error("MCP post-frame gate failed:", e);
   }
