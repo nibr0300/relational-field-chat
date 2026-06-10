@@ -1177,9 +1177,12 @@ async function persistPrmSignal(
   signal: PrmSignal,
   latencyMs: number,
   conversationId: string | undefined,
+  userId?: string | null,
 ): Promise<void> {
+  if (!userId) return;
   try {
     await supabase.from("prm_signals").insert({
+      user_id: userId,
       conversation_id: conversationId || null,
       tension: signal.tension,
       dominant_pattern: signal.dominant_pattern,
@@ -1198,6 +1201,7 @@ async function persistPrmSignal(
   } catch (e) {
     console.error("PRM persist failed:", e);
   }
+
 }
 
 function formatPrmInjection(signal: PrmSignal): string {
