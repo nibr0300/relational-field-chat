@@ -69,14 +69,13 @@ export async function runDistillation(opts: {
   scope_ref?: string | null;
 } = {}): Promise<{ run_id: string; rules_validated: number; cycles: number; termination_reason: string }> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-distill`;
+  const { authedJsonHeaders } = await import("./auth-headers");
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-    },
+    headers: await authedJsonHeaders(),
     body: JSON.stringify(opts),
   });
+
   if (!resp.ok) {
     const t = await resp.text();
     throw new Error(t || `Error ${resp.status}`);
