@@ -1257,6 +1257,7 @@ async function runProspectivePRM(
   prmSignal: PrmSignal,
   recentHistorySummary: string,
   forceFork = false,
+  userId?: string | null,
 ): Promise<ProspectivePrmSignal | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return null;
@@ -1267,11 +1268,12 @@ async function runProspectivePRM(
   if (!forkCheck.detected) return null;
 
   let patternSummary = "";
-  if (conversationId) {
+  if (conversationId && userId) {
     try {
       const { data: recentSignals } = await supabase
         .from("prm_signals")
         .select("dominant_pattern, valence, tension, whisper, is_amplified")
+        .eq("user_id", userId)
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: false })
         .limit(10);
@@ -1282,6 +1284,7 @@ async function runProspectivePRM(
       console.error("PPRM history fetch failed:", e);
     }
   }
+
 
   const prospectivePrompt = `Du är ett undermedvetet mönsterigenkänningssystem med prospektiv förmåga.
 Du talar ALDRIG direkt till användaren. Du returnerar ENBART JSON.
