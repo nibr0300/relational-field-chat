@@ -236,6 +236,7 @@ export type Database = {
           source: string
           source_conversation_id: string | null
           updated_at: string
+          user_id: string
         }
         Insert: {
           category?: string
@@ -252,6 +253,7 @@ export type Database = {
           source?: string
           source_conversation_id?: string | null
           updated_at?: string
+          user_id?: string
         }
         Update: {
           category?: string
@@ -268,6 +270,7 @@ export type Database = {
           source?: string
           source_conversation_id?: string | null
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -312,6 +315,7 @@ export type Database = {
           promoted_to_mcp_id: string | null
           significance: number
           source_conversation_id: string | null
+          user_id: string
         }
         Insert: {
           burn_reason?: string | null
@@ -323,6 +327,7 @@ export type Database = {
           promoted_to_mcp_id?: string | null
           significance?: number
           source_conversation_id?: string | null
+          user_id?: string
         }
         Update: {
           burn_reason?: string | null
@@ -334,6 +339,7 @@ export type Database = {
           promoted_to_mcp_id?: string | null
           significance?: number
           source_conversation_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
