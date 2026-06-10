@@ -2038,9 +2038,17 @@ serve(async (req) => {
     }
     const { messages, conversationId, mirror } = body;
 
-    return new Response(createChatStream(messages, conversationId, !!mirror), {
+    const userId = await getUserIdFromReq(req);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(createChatStream(messages, conversationId, !!mirror, userId), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
+
   } catch (e) {
     console.error("rfa-chat error:", e instanceof Error ? e.stack : e);
     return new Response(createErrorStream("RFA-funktionen fångade ett internt fel och höll sessionen vid liv."), {
