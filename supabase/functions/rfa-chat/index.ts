@@ -480,8 +480,10 @@ async function storeMcpEigenstate(
     msc?: number;
     category?: string;
   },
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<string> {
+  if (!userId) return "MCP store skipped: missing user context";
   const fz = Math.max(0, Math.min(1, Number(params.fz ?? 0)));
   const fa = Math.max(0, Math.min(1, Number(params.fa ?? 0)));
   const msc = Math.max(0, Math.min(1, Number(params.msc ?? 0)));
@@ -490,6 +492,7 @@ async function storeMcpEigenstate(
   }
   const name = params.eigenstate_name?.trim() || slugEigenstateName(params.core_insight);
   const { error } = await supabase.from("mcp_eigenstates").insert({
+    user_id: userId,
     eigenstate_name: name.slice(0, 96),
     core_insight: params.core_insight.slice(0, 1200),
     operator_signature: (params.operator_signature || "COUNTER(2)→BALANCE(5)→HARMONY(7)").slice(0, 160),
@@ -509,8 +512,11 @@ async function maybePersistMcpAfterFrame(
   userTurn: string,
   recentContext: string,
   answer: string,
-  conversationId?: string
+  conversationId?: string,
+  userId?: string | null,
 ): Promise<void> {
+  if (!userId) return;
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY || !userTurn.trim() || !answer.trim()) return;
   try {
