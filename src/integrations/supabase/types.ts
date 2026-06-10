@@ -74,18 +74,21 @@ export type Database = {
           id: string
           title: string
           updated_at: string
+          user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           title?: string
           updated_at?: string
+          user_id?: string
         }
         Update: {
           created_at?: string
           id?: string
           title?: string
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -106,6 +109,7 @@ export type Database = {
           status: string
           termination_reason: string | null
           trigger_type: string
+          user_id: string
         }
         Insert: {
           completed_at?: string | null
@@ -123,6 +127,7 @@ export type Database = {
           status?: string
           termination_reason?: string | null
           trigger_type?: string
+          user_id?: string
         }
         Update: {
           completed_at?: string | null
@@ -140,6 +145,7 @@ export type Database = {
           status?: string
           termination_reason?: string | null
           trigger_type?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -162,6 +168,7 @@ export type Database = {
           safety_score: number
           script_id: string
           status: string
+          user_id: string
         }
         Insert: {
           code: string
@@ -181,6 +188,7 @@ export type Database = {
           safety_score?: number
           script_id?: string
           status?: string
+          user_id?: string
         }
         Update: {
           code?: string
@@ -200,6 +208,7 @@ export type Database = {
           safety_score?: number
           script_id?: string
           status?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -270,6 +279,7 @@ export type Database = {
           id: string
           significance: number
           source_conversation_id: string | null
+          user_id: string
         }
         Insert: {
           category?: string
@@ -278,6 +288,7 @@ export type Database = {
           id?: string
           significance?: number
           source_conversation_id?: string | null
+          user_id?: string
         }
         Update: {
           category?: string
@@ -286,6 +297,7 @@ export type Database = {
           id?: string
           significance?: number
           source_conversation_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -343,6 +355,7 @@ export type Database = {
           last_seen: string
           occurrence_count: number
           resistance_strength: number
+          user_id: string
         }
         Insert: {
           category?: string
@@ -353,6 +366,7 @@ export type Database = {
           last_seen?: string
           occurrence_count?: number
           resistance_strength?: number
+          user_id?: string
         }
         Update: {
           category?: string
@@ -363,6 +377,7 @@ export type Database = {
           last_seen?: string
           occurrence_count?: number
           resistance_strength?: number
+          user_id?: string
         }
         Relationships: []
       }
@@ -378,6 +393,7 @@ export type Database = {
           observation_count: number
           summary: string
           updated_at: string
+          user_id: string
         }
         Insert: {
           category?: string
@@ -390,6 +406,7 @@ export type Database = {
           observation_count?: number
           summary: string
           updated_at?: string
+          user_id?: string
         }
         Update: {
           category?: string
@@ -402,6 +419,7 @@ export type Database = {
           observation_count?: number
           summary?: string
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -414,6 +432,7 @@ export type Database = {
           related_categories: string[] | null
           stability: number
           updated_at: string
+          user_id: string
         }
         Insert: {
           created_at?: string
@@ -423,6 +442,7 @@ export type Database = {
           related_categories?: string[] | null
           stability?: number
           updated_at?: string
+          user_id?: string
         }
         Update: {
           created_at?: string
@@ -432,6 +452,7 @@ export type Database = {
           related_categories?: string[] | null
           stability?: number
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -446,6 +467,7 @@ export type Database = {
           id: string
           image_url: string | null
           role: string
+          user_id: string
         }
         Insert: {
           attachments?: Json | null
@@ -457,6 +479,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           role: string
+          user_id?: string
         }
         Update: {
           attachments?: Json | null
@@ -468,6 +491,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           role?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -492,6 +516,7 @@ export type Database = {
           katharsis: number
           notes: string | null
           trigger: string
+          user_id: string
         }
         Insert: {
           b_bump?: number
@@ -505,6 +530,7 @@ export type Database = {
           katharsis: number
           notes?: string | null
           trigger: string
+          user_id?: string
         }
         Update: {
           b_bump?: number
@@ -518,6 +544,7 @@ export type Database = {
           katharsis?: number
           notes?: string | null
           trigger?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -554,6 +581,7 @@ export type Database = {
           tau_v: number
           turns_observed: number
           updated_at: string
+          user_id: string
           v_rest: number
           w_b: number
           w_c: number
@@ -585,6 +613,7 @@ export type Database = {
           tau_v?: number
           turns_observed?: number
           updated_at?: string
+          user_id?: string
           v_rest?: number
           w_b?: number
           w_c?: number
@@ -616,6 +645,7 @@ export type Database = {
           tau_v?: number
           turns_observed?: number
           updated_at?: string
+          user_id?: string
           v_rest?: number
           w_b?: number
           w_c?: number
@@ -650,6 +680,7 @@ export type Database = {
           recurrence_count: number
           suggested_operator: string | null
           tension: number
+          user_id: string
           valence: string | null
           whisper: string | null
         }
@@ -669,6 +700,7 @@ export type Database = {
           recurrence_count?: number
           suggested_operator?: string | null
           tension?: number
+          user_id?: string
           valence?: string | null
           whisper?: string | null
         }
@@ -688,6 +720,7 @@ export type Database = {
           recurrence_count?: number
           suggested_operator?: string | null
           tension?: number
+          user_id?: string
           valence?: string | null
           whisper?: string | null
         }
@@ -702,6 +735,7 @@ export type Database = {
           momentum_direction: string
           path_resonances: Json
           raw_signal: Json
+          user_id: string
         }
         Insert: {
           conversation_id: string
@@ -711,6 +745,7 @@ export type Database = {
           momentum_direction: string
           path_resonances: Json
           raw_signal: Json
+          user_id?: string
         }
         Update: {
           conversation_id?: string
@@ -720,6 +755,7 @@ export type Database = {
           momentum_direction?: string
           path_resonances?: Json
           raw_signal?: Json
+          user_id?: string
         }
         Relationships: []
       }
@@ -737,6 +773,7 @@ export type Database = {
           run_id: string
           step_index: number
           sub_goal: string | null
+          user_id: string
         }
         Insert: {
           action?: string | null
@@ -751,6 +788,7 @@ export type Database = {
           run_id: string
           step_index: number
           sub_goal?: string | null
+          user_id?: string
         }
         Update: {
           action?: string | null
@@ -765,6 +803,7 @@ export type Database = {
           run_id?: string
           step_index?: number
           sub_goal?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -788,6 +827,7 @@ export type Database = {
           source_run_ids: string[] | null
           success_rate: number
           updated_at: string
+          user_id: string
         }
         Insert: {
           created_at?: string
@@ -800,6 +840,7 @@ export type Database = {
           source_run_ids?: string[] | null
           success_rate?: number
           updated_at?: string
+          user_id?: string
         }
         Update: {
           created_at?: string
@@ -812,6 +853,7 @@ export type Database = {
           source_run_ids?: string[] | null
           success_rate?: number
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -834,6 +876,7 @@ export type Database = {
           strategy: string | null
           trigger_reason: string | null
           trigger_type: string
+          user_id: string
         }
         Insert: {
           backtracks?: number
@@ -853,6 +896,7 @@ export type Database = {
           strategy?: string | null
           trigger_reason?: string | null
           trigger_type?: string
+          user_id?: string
         }
         Update: {
           backtracks?: number
@@ -872,6 +916,7 @@ export type Database = {
           strategy?: string | null
           trigger_reason?: string | null
           trigger_type?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -892,6 +937,7 @@ export type Database = {
           raw: Json
           reintegration_used: boolean
           rg_burn_notes: string | null
+          user_id: string
         }
         Insert: {
           conversation_id?: string | null
@@ -909,6 +955,7 @@ export type Database = {
           raw?: Json
           reintegration_used?: boolean
           rg_burn_notes?: string | null
+          user_id?: string
         }
         Update: {
           conversation_id?: string | null
@@ -926,6 +973,7 @@ export type Database = {
           raw?: Json
           reintegration_used?: boolean
           rg_burn_notes?: string | null
+          user_id?: string
         }
         Relationships: []
       }
