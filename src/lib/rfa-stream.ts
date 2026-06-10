@@ -1,3 +1,5 @@
+import { authedJsonHeaders } from "./auth-headers";
+
 export interface Attachment {
   type: "image" | "pdf" | "markdown" | "json" | "text";
   url: string;
