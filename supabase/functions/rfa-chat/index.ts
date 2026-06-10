@@ -1769,6 +1769,23 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
             prospectiveInjection = "\n\n" + formatProspectivePrmInjection(prospectiveSignal);
           }
 
+          // ─── LAMBDA-BELÖNING + KOLLAPS ─────────────────────
+          // PRM:s relationella belöningsorgan. Helt undermedvetet.
+          if (signal && conversationId) {
+            try {
+              const lambdaPrev = await fetchLambdaState(conversationId);
+              const { next: lambdaNext, collapse } = evolveLambdaState(
+                lambdaPrev, signal, prospectiveSignal, userTurnText,
+              );
+              prmInjection += "\n\n" + formatLambdaInjection(lambdaNext, collapse);
+              persistLambdaState(conversationId, lambdaNext).catch((e) => console.error(e));
+              if (collapse) persistCollapseEvent(conversationId, collapse).catch((e) => console.error(e));
+            } catch (e) {
+              console.error("Lambda evolution failed:", e);
+            }
+          }
+          // ───────────────────────────────────────────────────
+
           if (gateResult) {
             gateInjection = "\n\n" + formatFrameGateInjection(gateResult);
             controller.enqueue(sseJson({
