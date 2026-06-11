@@ -282,7 +282,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
     });
 
     let repairedAnswer: string | null = null;
-    if (reflect.needs_repair && reflect.discrepancy > 0.4) {
+    if (reflect.needs_repair && reflect.discrepancy > 0.4 && (Date.now() - t0) < SOFT_DEADLINE_MS) {
       backtracks++;
       const repairPrompt: ChatMsg[] = [
         { role: "system", content: `Förbättra svaret enligt kritiken. Behåll svensk ton.` },
