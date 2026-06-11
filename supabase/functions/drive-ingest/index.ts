@@ -199,35 +199,49 @@ serve(async (req) => {
     }
 
     if (is_folder) {
-      const files = await listFolderFiles(file_id);
-      const ingestable = files.filter((f) =>
-        f.mimeType !== "application/vnd.google-apps.folder" &&
-        (f.mimeType in GOOGLE_EXPORT || isTextish(f.mimeType, f.name))
-      );
-      let ok = 0, fail = 0;
-      const errors: string[] = [];
-      for (const f of ingestable) {
-        try { await ingestOne(userId, f.id, f.name, f.mimeType); ok++; }
-        catch (e) { fail++; errors.push(`${f.name}: ${e instanceof Error ? e.message : "fel"}`); }
-      }
-      // Optionally recurse into subfolders
-      if (recursive) {
-        const subfolders = files.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
-        for (const sub of subfolders) {
-          try {
-            const subFiles = await listFolderFiles(sub.id);
-            for (const f of subFiles) {
-              if (f.mimeType === "application/vnd.google-apps.folder") continue;
-              if (!(f.mimeType in GOOGLE_EXPORT) && !isTextish(f.mimeType, f.name)) continue;
-              try { await ingestOne(userId, f.id, `${sub.name}/${f.name}`, f.mimeType); ok++; }
-              catch (e) { fail++; errors.push(`${sub.name}/${f.name}: ${e instanceof Error ? e.message : "fel"}`); }
+      // Run in background to avoid 150s edge timeout; respond immediately.
+      const job = async () => {
+        let ok = 0, fail = 0;
+        try {
+          const files = await listFolderFiles(file_id);
+          const ingestable = files.filter((f) =>
+            f.mimeType !== "application/vnd.google-apps.folder" &&
+            (f.mimeType in GOOGLE_EXPORT || isTextish(f.mimeType, f.name))
+          );
+          for (const f of ingestable) {
+            try { await ingestOne(userId, f.id, f.name, f.mimeType); ok++; }
+            catch (e) { fail++; console.error("ingest fail", f.name, e); }
+          }
+          if (recursive) {
+            const subfolders = files.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+            for (const sub of subfolders) {
+              try {
+                const subFiles = await listFolderFiles(sub.id);
+                for (const f of subFiles) {
+                  if (f.mimeType === "application/vnd.google-apps.folder") continue;
+                  if (!(f.mimeType in GOOGLE_EXPORT) && !isTextish(f.mimeType, f.name)) continue;
+                  try { await ingestOne(userId, f.id, `${sub.name}/${f.name}`, f.mimeType); ok++; }
+                  catch (e) { fail++; console.error("ingest fail", f.name, e); }
+                }
+              } catch (e) { console.error("subfolder fail", sub.name, e); }
             }
-          } catch (e) { errors.push(`Mapp ${sub.name}: ${e instanceof Error ? e.message : "fel"}`); }
+          }
+          console.log(`folder ${file_id} done: ok=${ok} fail=${fail}`);
+        } catch (e) {
+          console.error("folder job error:", e);
         }
+      };
+      // @ts-ignore EdgeRuntime is available in Supabase edge runtime
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(job());
+      } else {
+        job(); // fallback fire-and-forget
       }
-      return new Response(JSON.stringify({ ok, fail, total: ok + fail, errors: errors.slice(0, 20) }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({
+        queued: true,
+        message: "Indexering startad i bakgrunden. Status uppdateras i Dokument-panelen efterhand.",
+      }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const result = await ingestOne(userId, file_id, name || "Drive file", mime_type || "");

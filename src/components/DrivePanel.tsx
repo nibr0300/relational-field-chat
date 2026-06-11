@@ -108,7 +108,11 @@ export function DrivePanel({ isOpen, onClose }: { isOpen: boolean; onClose: () =
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || `fel ${resp.status}`);
-      toast.success(`${f.name}: ${data.ok} indexerade${data.fail ? `, ${data.fail} fel` : ""}`);
+      if (data.queued) {
+        toast.success(`${f.name}: indexering startad i bakgrunden. Följ status i Dokument-panelen.`);
+      } else {
+        toast.success(`${f.name}: ${data.ok} indexerade${data.fail ? `, ${data.fail} fel` : ""}`);
+      }
       if (data.errors?.length) console.warn("Drive ingest errors:", data.errors);
     } catch (e) {
       toast.error(`${f.name}: ${e instanceof Error ? e.message : "fel"}`);
