@@ -10,10 +10,11 @@ interface Props {
   isOpen: boolean;
   onToggle: () => void;
   userEmail?: string | null;
+  authWarning?: string | null;
   onSignOut: () => void;
 }
 
-export function ConversationSidebar({ conversations, activeId, onSelect, onNew, onDelete, isOpen, onToggle, userEmail, onSignOut }: Props) {
+export function ConversationSidebar({ conversations, activeId, onSelect, onNew, onDelete, isOpen, onToggle, userEmail, authWarning, onSignOut }: Props) {
   return (
     <>
       {/* Mobile toggle */}
@@ -66,7 +67,10 @@ export function ConversationSidebar({ conversations, activeId, onSelect, onNew, 
             </div>
           ))}
           {conversations.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-8">Inga konversationer ännu</p>
+            <div className="space-y-2 py-8 text-center">
+              <p className="text-xs text-muted-foreground">Inga konversationer ännu</p>
+              {authWarning && <p className="px-3 text-[10px] leading-relaxed text-primary">{authWarning}</p>}
+            </div>
           )}
         </div>
 
