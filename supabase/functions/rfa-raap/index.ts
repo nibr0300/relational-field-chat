@@ -28,9 +28,10 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 }
 
 
-const FAST = "google/gemini-2.5-flash";
-const DEEP = "google/gemini-2.5-pro";
-const MAX_RAAP_ANSWER_TOKENS = 6000;
+const FAST = "google/gemini-2.5-flash-lite";
+const DEEP = "google/gemini-2.5-flash";
+const MAX_RAAP_ANSWER_TOKENS = 3500;
+const SOFT_DEADLINE_MS = 110_000; // lämna marginal under 150s idle-timeout
 
 function aiGatewayHeaders(apiKey: string): Record<string, string> {
   return {
