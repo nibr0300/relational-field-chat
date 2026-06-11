@@ -191,8 +191,11 @@ async function ingestOne(userId: string, fileId: string, name: string, mimeType:
         document_id: docId, user_id: userId, chunk_index: i + k, content,
         embedding: vectors[k] as any, token_estimate: Math.ceil(content.length / 4),
       }));
-      const { error } = await supabaseAdmin.from("document_chunks").insert(rows);
-      if (error) throw error;
+      for (let j = 0; j < rows.length; j += INSERT_BATCH) {
+        const sub = rows.slice(j, j + INSERT_BATCH);
+        const { error } = await supabaseAdmin.from("document_chunks").insert(sub);
+        if (error) throw error;
+      }
       inserted += rows.length;
     }
     await supabaseAdmin.from("documents").update({
