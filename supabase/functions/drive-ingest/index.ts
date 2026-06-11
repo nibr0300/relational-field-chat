@@ -23,7 +23,8 @@ const EMBED_MODEL = "openai/text-embedding-3-small";
 const CHUNK_TARGET = 1100;
 const CHUNK_OVERLAP = 150;
 const MAX_CHUNKS = 400;
-const BATCH = 32;
+const BATCH = 16;
+const INSERT_BATCH = 4;
 const MAX_TEXT_BYTES = 5 * 1024 * 1024;
 const MAX_FILES_PER_FOLDER = 200;
 
