@@ -164,7 +164,7 @@ async function ingestOne(userId: string, fileId: string, name: string, mimeType:
     await supabaseAdmin.from("documents").update({
       title: name, mime_type: mimeType, status: "ingesting", error: null,
     }).eq("id", docId);
-    await supabaseAdmin.from("document_chunks").delete().eq("document_id", docId);
+    try { await supabaseAdmin.from("document_chunks").delete().eq("document_id", docId); } catch (e) { console.warn("chunk delete slow:", e); }
   } else {
     const ins = await supabaseAdmin.from("documents").insert({
       user_id: userId, title: name, storage_path: storagePath,
