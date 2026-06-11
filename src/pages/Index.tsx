@@ -22,6 +22,7 @@ import { extractPdfText } from "@/lib/pdf-extract";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
+import { hardSignOut } from "@/lib/auth-session";
 import {
   extractMentions,
   resolveMentions,
@@ -148,7 +149,7 @@ export default function Index() {
   }, []);
 
   const handleSignOut = useCallback(async () => {
-    await supabase.auth.signOut({ scope: "global" });
+    await hardSignOut(() => supabase.auth.signOut({ scope: "global" }));
     setConversations([]);
     setActiveConvId(null);
     setUserEmail(null);

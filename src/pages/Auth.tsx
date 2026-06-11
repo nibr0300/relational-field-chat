@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
+import { clearStoredAuthSession } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,9 +48,10 @@ export default function Auth() {
   }
 
   async function google() {
+    clearStoredAuthSession();
     const r = await lovable.auth.signInWithOAuth("google", {
       redirect_uri: window.location.origin,
-      extraParams: { prompt: "select_account" },
+      extraParams: { prompt: "select_account", login_hint: "visiontruthdesign@gmail.com" },
     });
     if (r.error) toast.error(String(r.error));
   }
