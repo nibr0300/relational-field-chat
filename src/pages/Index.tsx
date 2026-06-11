@@ -38,6 +38,7 @@ const WELCOME: Msg = {
 
 const MAX_DOC_CHARS = 8_000;
 const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
+const HISTORY_OWNER_EMAIL = "visiontruthdesign@gmail.com";
 
 async function readMarkdownPreview(file: File): Promise<string> {
   const text = await file.slice(0, MARKDOWN_READ_BYTES).text();
@@ -58,6 +59,7 @@ export default function Index() {
   const [driveOpen, setDriveOpen] = useState(false);
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authWarning, setAuthWarning] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
@@ -75,8 +77,46 @@ export default function Index() {
   });
 
   useEffect(() => {
-    listConversations().then(setConversations).catch(console.error);
-    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
+    let cancelled = false;
+
+    const loadAuthenticatedArchive = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (cancelled) return;
+      if (error || !data.user) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      const email = data.user.email ?? null;
+      const convs = await listConversations();
+      if (cancelled) return;
+
+      setUserEmail(email);
+      setConversations(convs);
+      setAuthWarning(
+        convs.length === 0 && email?.toLowerCase() !== HISTORY_OWNER_EMAIL
+          ? `Aktiv session är ${email}. Historiken ligger under ${HISTORY_OWNER_EMAIL}.`
+          : null,
+      );
+    };
+
+    void loadAuthenticatedArchive().catch((err) => {
+      console.error("Kunde inte ladda historik:", err);
+      toast.error("Kunde inte ladda historiken");
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      setActiveConvId(null);
+      setMessages([WELCOME]);
+      window.setTimeout(() => {
+        void loadAuthenticatedArchive().catch(console.error);
+      }, 0);
+    });
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -108,9 +148,11 @@ export default function Index() {
   }, []);
 
   const handleSignOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "global" });
     setConversations([]);
     setActiveConvId(null);
+    setUserEmail(null);
+    setAuthWarning(null);
     setMessages([WELCOME]);
     window.location.href = "/auth";
   }, []);
@@ -353,6 +395,7 @@ export default function Index() {
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         userEmail={userEmail}
+        authWarning={authWarning}
         onSignOut={handleSignOut}
       />
 
