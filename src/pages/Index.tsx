@@ -22,6 +22,7 @@ import { extractPdfText } from "@/lib/pdf-extract";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
+import { ARCHIVE_OWNER_EMAIL, isArchiveOwnerEmail } from "@/lib/archive-owner";
 import { hardSignOut } from "@/lib/auth-session";
 import {
   extractMentions,
@@ -39,7 +40,6 @@ const WELCOME: Msg = {
 
 const MAX_DOC_CHARS = 8_000;
 const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
-const HISTORY_OWNER_EMAIL = "visiontruthdesign@gmail.com";
 
 async function readMarkdownPreview(file: File): Promise<string> {
   const text = await file.slice(0, MARKDOWN_READ_BYTES).text();
@@ -95,8 +95,8 @@ export default function Index() {
       setUserEmail(email);
       setConversations(convs);
       setAuthWarning(
-        convs.length === 0 && email?.toLowerCase() !== HISTORY_OWNER_EMAIL
-          ? `Aktiv session är ${email}. Historiken ligger under ${HISTORY_OWNER_EMAIL}.`
+        convs.length === 0 && !isArchiveOwnerEmail(email)
+          ? `Aktiv session är ${email}. Historiken ligger under ${ARCHIVE_OWNER_EMAIL}.`
           : null,
       );
     };
