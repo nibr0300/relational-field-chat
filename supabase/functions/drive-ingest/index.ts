@@ -84,9 +84,16 @@ const GOOGLE_EXPORT: Record<string, string> = {
 };
 
 function isTextish(mime: string, name: string): boolean {
-  if (!mime) return /\.(txt|md|markdown|mdx|json|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/i.test(name);
-  return mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" ||
-    mime === "application/javascript" || mime === "application/typescript";
+  const extRe = /\.(txt|md|markdown|mdx|json|jsonl|ndjson|ipynb|csv|tsv|log|ya?ml|html?|xml|svg|tsx?|jsx?|mjs|cjs|vue|svelte|astro|py|ipy|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|kts|scala|sql|sh|bash|zsh|fish|ps1|bat|toml|ini|conf|cfg|env|gradle|dockerfile|makefile|r|jl|lua|pl|dart|nim|zig|hs|elm|ex|exs|clj|cljs|edn|tex)$/i;
+  if (extRe.test(name)) return true;
+  if (!mime) return false;
+  if (mime.startsWith("text/")) return true;
+  if (mime === "application/json" || mime === "application/xml" ||
+      mime === "application/javascript" || mime === "application/typescript" ||
+      mime === "application/x-ipynb+json" || mime === "application/x-python" ||
+      mime === "application/x-sh" || mime === "application/x-yaml" ||
+      mime === "application/octet-stream") return extRe.test(name);
+  return false;
 }
 
 async function fetchDriveText(fileId: string, mimeType: string, name: string): Promise<string> {
