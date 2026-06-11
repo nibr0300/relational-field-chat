@@ -26,20 +26,33 @@ export function DocumentsPanel({ isOpen, onClose }: { isOpen: boolean; onClose: 
   useEffect(() => { if (isOpen) refresh(); }, [isOpen, refresh]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+    const all = Array.from(e.target.files ?? []);
     e.target.value = "";
+    // Filter: skip hidden files and obvious binaries
+    const files = all.filter((f) => {
+      const rel = (f as any).webkitRelativePath || f.name;
+      if (rel.split("/").some((p: string) => p.startsWith("."))) return false;
+      const lower = f.name.toLowerCase();
+      const allowed = /\.(pdf|txt|md|markdown|mdx|json|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/;
+      return allowed.test(lower) || f.type.startsWith("text/") || f.type === "application/pdf" || f.type === "application/json";
+    });
     if (files.length === 0) return;
+    if (files.length > 50 && !confirm(`Du är på väg att ladda upp ${files.length} filer. Fortsätta?`)) return;
     setUploading(true);
+    let ok = 0, fail = 0;
     for (const f of files) {
       try {
-        await uploadAndIngest(f);
-        toast.success(`${f.name} indexerad`);
+        const rel = (f as any).webkitRelativePath as string | undefined;
+        await uploadAndIngest(f, rel ? { title: rel } : undefined);
+        ok++;
       } catch (err) {
         console.error(err);
+        fail++;
         toast.error(`${f.name}: ${err instanceof Error ? err.message : "fel"}`);
       }
-      await refresh();
     }
+    await refresh();
+    toast.success(`Klart: ${ok} indexerade${fail ? `, ${fail} fel` : ""}`);
     setUploading(false);
   };
 
