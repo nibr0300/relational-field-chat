@@ -101,13 +101,31 @@ export function DocumentsPanel({ isOpen, onClose }: { isOpen: boolean; onClose: 
             className="hidden"
             onChange={handleUpload}
           />
+          <input
+            ref={folderRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleUpload}
+            // @ts-expect-error non-standard attrs for folder upload
+            webkitdirectory=""
+            directory=""
+          />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 glow-amber"
           >
             {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-            Ladda upp
+            Filer
+          </button>
+          <button
+            onClick={() => folderRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-primary/40 text-primary text-xs font-medium hover:bg-primary/10 disabled:opacity-50"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Mapp
           </button>
           <button
             onClick={refresh}
