@@ -21,6 +21,7 @@ import {
 import { extractPdfText } from "@/lib/pdf-extract";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
+import { supabase } from "@/integrations/supabase/client";
 import {
   extractMentions,
   resolveMentions,
@@ -56,6 +57,7 @@ export default function Index() {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [driveOpen, setDriveOpen] = useState(false);
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
@@ -74,6 +76,7 @@ export default function Index() {
 
   useEffect(() => {
     listConversations().then(setConversations).catch(console.error);
+    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
   }, []);
 
   useEffect(() => {
@@ -102,6 +105,14 @@ export default function Index() {
     setActiveConvId(null);
     setMessages([WELCOME]);
     setSidebarOpen(false);
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setConversations([]);
+    setActiveConvId(null);
+    setMessages([WELCOME]);
+    window.location.href = "/auth";
   }, []);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
@@ -341,6 +352,8 @@ export default function Index() {
         onDelete={handleDeleteConversation}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
+        userEmail={userEmail}
+        onSignOut={handleSignOut}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
