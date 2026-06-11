@@ -28,9 +28,10 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 }
 
 
-const FAST = "google/gemini-2.5-flash";
-const DEEP = "google/gemini-2.5-pro";
-const MAX_RAAP_ANSWER_TOKENS = 6000;
+const FAST = "google/gemini-2.5-flash-lite";
+const DEEP = "google/gemini-2.5-flash";
+const MAX_RAAP_ANSWER_TOKENS = 3500;
+const SOFT_DEADLINE_MS = 110_000; // lämna marginal under 150s idle-timeout
 
 function aiGatewayHeaders(apiKey: string): Record<string, string> {
   return {
@@ -200,40 +201,38 @@ Returnera STRIKT JSON:
     const strategy = strategyMap[decomp.problem_class] ?? "tot";
     await supabase.from("raap_runs").update({ strategy, plan_dag: decomp.sub_goals }).eq("id", runId);
 
-    // ─── PHASE 3: MCTS-STYLE BRANCH EXPANSION ────────────────────
-    const branches: { plan: string; value: number; reasoning: string }[] = [];
-    const numBranches = decomp.complexity > 0.6 ? 3 : 2;
-
-    for (let b = 0; b < numBranches; b++) {
+    // ─── PHASE 3: MCTS-STYLE BRANCH EXPANSION (parallell) ────────
+    const numBranches = decomp.complexity > 0.7 ? 3 : 2;
+    const branchPromises = Array.from({ length: numBranches }, (_, b) => {
       const branchPrompt: ChatMsg[] = [
         { role: "system", content:
 `Du utforskar gren ${b + 1}/${numBranches} med strategi ${strategy.toUpperCase()}.
-MCP-ankare (historisk kurvatur, inte transcript):
+MCP-ankare:
 ${mcpText}
 
-Vortex-mönster (stabila insikter):
+Vortex-mönster:
 ${vortexText}
 
-Friktion (kända motstånd):
+Friktion:
 ${frictionText}
 
-Föreslå en KONKRET plan (3-7 steg) för att lösa målet. Var explicit om verktyg/resonemangstyp per steg.
-Returnera JSON: {"plan": "stegvis text", "estimated_value": 0.0-1.0, "reasoning": "varför just denna ansats"}` },
-        { role: "user", content: `MÅL: ${goal}\nSUB-MÅL: ${JSON.stringify(decomp.sub_goals)}\nGren ${b + 1}: variera ansatsen från tidigare grenar.` },
+Föreslå en KONKRET plan (3-7 steg). Var explicit om verktyg/resonemangstyp per steg.
+Returnera JSON: {"plan": "stegvis text", "estimated_value": 0.0-1.0, "reasoning": "kort"}` },
+        { role: "user", content: `MÅL: ${goal}\nSUB-MÅL: ${JSON.stringify(decomp.sub_goals)}\nGren ${b + 1}: variera ansatsen.` },
       ];
-      const branchRaw = await llm(FAST, branchPrompt, { json: true, maxTokens: 700 });
-      llmCalls++;
-      const branch = safeJSON<{ plan: string; estimated_value: number; reasoning: string }>(
-        branchRaw, { plan: "Direkt utförande av målet.", estimated_value: 0.5, reasoning: "fallback" }
-      );
-      branches.push({ plan: branch.plan, value: branch.estimated_value ?? 0.5, reasoning: branch.reasoning });
-      await log(b + 1, "reason", {
-        sub_goal: `branch-${b + 1}`,
-        action: branch.plan,
-        reflection: branch.reasoning,
-        confidence: branch.value,
-      });
+      return llm(FAST, branchPrompt, { json: true, maxTokens: 500 })
+        .then((raw) => safeJSON<{ plan: string; estimated_value: number; reasoning: string }>(
+          raw, { plan: "Direkt utförande.", estimated_value: 0.5, reasoning: "fallback" }
+        ))
+        .catch(() => ({ plan: "Direkt utförande.", estimated_value: 0.4, reasoning: "branch-fail" }));
+    });
+    const branchResults = await Promise.all(branchPromises);
+    llmCalls += numBranches;
+    const branches = branchResults.map((b) => ({ plan: b.plan, value: b.estimated_value ?? 0.5, reasoning: b.reasoning }));
+    for (let i = 0; i < branches.length; i++) {
+      await log(i + 1, "reason", { sub_goal: `branch-${i + 1}`, action: branches[i].plan, reflection: branches[i].reasoning, confidence: branches[i].value });
     }
+
 
     // Select best branch (UCB-lite: pure value)
     branches.sort((a, b) => b.value - a.value);
@@ -283,7 +282,7 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
     });
 
     let repairedAnswer: string | null = null;
-    if (reflect.needs_repair && reflect.discrepancy > 0.4) {
+    if (reflect.needs_repair && reflect.discrepancy > 0.4 && (Date.now() - t0) < SOFT_DEADLINE_MS) {
       backtracks++;
       const repairPrompt: ChatMsg[] = [
         { role: "system", content: `Förbättra svaret enligt kritiken. Behåll svensk ton.` },
