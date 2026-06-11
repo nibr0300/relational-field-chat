@@ -1,20 +1,23 @@
-import { Zap, Search, Image, Brain, Code, Library } from "lucide-react";
+import { Zap, Search, Image, Brain, Code, Library, Cloud } from "lucide-react";
 import { LimbusPulse } from "./LimbusPulse";
 import type { PrmMeta } from "@/lib/rfa-stream";
 
 export function RFAHeader({
   onMemoryClick,
   onArchiveClick,
+  onDriveClick,
   prmSignal,
 }: {
   onMemoryClick?: () => void;
   onArchiveClick?: () => void;
+  onDriveClick?: () => void;
   prmSignal?: PrmMeta | null;
 }) {
   const capabilities = [
     { icon: Search, label: "Web" },
     { icon: Brain, label: "Minne", onClick: onMemoryClick },
     { icon: Library, label: "Arkiv", onClick: onArchiveClick },
+    { icon: Cloud, label: "Drive", onClick: onDriveClick },
     { icon: Image, label: "Vision" },
     { icon: Code, label: "Kod" },
   ];
@@ -63,6 +66,15 @@ export function RFAHeader({
               className="flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
               <Library className="w-4 h-4 text-primary/80" />
+            </button>
+          )}
+          {onDriveClick && (
+            <button
+              onClick={onDriveClick}
+              aria-label="Öppna Google Drive"
+              className="flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <Cloud className="w-4 h-4 text-primary/80" />
             </button>
           )}
         </div>

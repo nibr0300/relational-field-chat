@@ -20,6 +20,7 @@ import {
 } from "@/lib/conversation-store";
 import { extractPdfText } from "@/lib/pdf-extract";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
+import { DrivePanel } from "@/components/DrivePanel";
 import {
   extractMentions,
   resolveMentions,
@@ -53,6 +54,7 @@ export default function Index() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [driveOpen, setDriveOpen] = useState(false);
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -337,10 +339,12 @@ export default function Index() {
         <RFAHeader
           onMemoryClick={() => setMemoryOpen(true)}
           onArchiveClick={() => setArchiveOpen(true)}
+          onDriveClick={() => setDriveOpen(true)}
           prmSignal={prmSignal}
         />
         <MemoryPanel isOpen={memoryOpen} onClose={() => setMemoryOpen(false)} />
         <DocumentsPanel isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} />
+        <DrivePanel isOpen={driveOpen} onClose={() => setDriveOpen(false)} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
             {messages.map((msg, i) => (
