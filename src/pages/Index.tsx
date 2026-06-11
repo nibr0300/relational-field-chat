@@ -19,6 +19,13 @@ import {
   type Conversation,
 } from "@/lib/conversation-store";
 import { extractPdfText } from "@/lib/pdf-extract";
+import { DocumentsPanel } from "@/components/DocumentsPanel";
+import {
+  extractMentions,
+  resolveMentions,
+  searchDocuments,
+  formatChunksForContext,
+} from "@/lib/documents-store";
 import { toast } from "sonner";
 
 const WELCOME: Msg = {
@@ -45,6 +52,7 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -156,6 +164,25 @@ export default function Index() {
     if (docTexts.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
       aiContent = prefix + docTexts.join("\n\n---\n\n");
+    }
+
+    // ─── ARKIV: lös @filnamn / @arkiv och injicera relevanta chunks ───
+    try {
+      const mentions = extractMentions(text);
+      const hasMention = mentions.all || mentions.tokens.length > 0;
+      if (hasMention && text.trim().length > 0) {
+        const docIds = mentions.all ? undefined : await resolveMentions(mentions.tokens);
+        if (mentions.all || (docIds && docIds.length > 0)) {
+          const matches = await searchDocuments(text, {
+            k: mentions.all ? 8 : 6,
+            documentIds: docIds && docIds.length ? docIds : undefined,
+          });
+          const ctx = formatChunksForContext(matches);
+          if (ctx) aiContent = `${ctx}\n\n${aiContent}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Arkiv-sökning misslyckades:", e);
     }
 
     const userMsg: Msg = {
@@ -307,8 +334,13 @@ export default function Index() {
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <RFAHeader onMemoryClick={() => setMemoryOpen(true)} prmSignal={prmSignal} />
+        <RFAHeader
+          onMemoryClick={() => setMemoryOpen(true)}
+          onArchiveClick={() => setArchiveOpen(true)}
+          prmSignal={prmSignal}
+        />
         <MemoryPanel isOpen={memoryOpen} onClose={() => setMemoryOpen(false)} />
+        <DocumentsPanel isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
           <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
             {messages.map((msg, i) => (

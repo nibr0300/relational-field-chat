@@ -149,6 +149,95 @@ export type Database = {
         }
         Relationships: []
       }
+      document_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          created_at: string
+          document_id: string
+          embedding: string
+          id: string
+          token_estimate: number | null
+          user_id: string
+        }
+        Insert: {
+          chunk_index: number
+          content: string
+          created_at?: string
+          document_id: string
+          embedding: string
+          id?: string
+          token_estimate?: number | null
+          user_id?: string
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          created_at?: string
+          document_id?: string
+          embedding?: string
+          id?: string
+          token_estimate?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          char_count: number | null
+          chunk_count: number | null
+          created_at: string
+          error: string | null
+          id: string
+          mime_type: string | null
+          size_bytes: number | null
+          status: string
+          storage_path: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          char_count?: number | null
+          chunk_count?: number | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          status?: string
+          storage_path?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          char_count?: number | null
+          chunk_count?: number | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          status?: string
+          storage_path?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       executions: {
         Row: {
           code: string
@@ -1007,6 +1096,22 @@ export type Database = {
     }
     Functions: {
       is_owner: { Args: never; Returns: boolean }
+      match_document_chunks: {
+        Args: {
+          filter_document_ids?: string[]
+          filter_user?: string
+          match_count?: number
+          query_embedding: string
+        }
+        Returns: {
+          chunk_id: string
+          chunk_index: number
+          content: string
+          document_id: string
+          similarity: number
+          title: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
