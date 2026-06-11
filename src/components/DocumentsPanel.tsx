@@ -15,6 +15,7 @@ export function DocumentsPanel({ isOpen, onClose }: { isOpen: boolean; onClose: 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
