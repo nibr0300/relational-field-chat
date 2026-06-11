@@ -168,19 +168,27 @@ export default function Index() {
       aiContent = prefix + docTexts.join("\n\n---\n\n");
     }
 
-    // ─── ARKIV: lös @filnamn / @arkiv och injicera relevanta chunks ───
+    // ─── ARKIV: alltid semantisk auto-sökning; @filnamn / @arkiv = explicit override ───
     try {
-      const mentions = extractMentions(text);
-      const hasMention = mentions.all || mentions.tokens.length > 0;
-      if (hasMention && text.trim().length > 0) {
-        const docIds = mentions.all ? undefined : await resolveMentions(mentions.tokens);
-        if (mentions.all || (docIds && docIds.length > 0)) {
-          const matches = await searchDocuments(text, {
-            k: mentions.all ? 8 : 6,
-            documentIds: docIds && docIds.length ? docIds : undefined,
-          });
-          const ctx = formatChunksForContext(matches);
-          if (ctx) aiContent = `${ctx}\n\n${aiContent}`;
+      if (text.trim().length > 0) {
+        const mentions = extractMentions(text);
+        const hasMention = mentions.all || mentions.tokens.length > 0;
+        let docIds: string[] | undefined;
+        let k = 5;
+        let simThreshold = 0.28; // auto-läge: bara träffar med rimlig relevans
+        if (hasMention) {
+          k = mentions.all ? 10 : 8;
+          simThreshold = 0; // explicit @-mention: lita på användarens intention
+          if (!mentions.all) {
+            const resolved = await resolveMentions(mentions.tokens);
+            docIds = resolved.length ? resolved : undefined;
+          }
+        }
+        const matches = await searchDocuments(text, { k, documentIds: docIds });
+        const filtered = matches.filter((m) => m.similarity >= simThreshold);
+        if (filtered.length > 0) {
+          const ctx = formatChunksForContext(filtered);
+          aiContent = `${ctx}\n\n${aiContent}`;
         }
       }
     } catch (e) {
