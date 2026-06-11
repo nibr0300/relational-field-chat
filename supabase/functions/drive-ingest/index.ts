@@ -23,7 +23,8 @@ const EMBED_MODEL = "openai/text-embedding-3-small";
 const CHUNK_TARGET = 1100;
 const CHUNK_OVERLAP = 150;
 const MAX_CHUNKS = 400;
-const BATCH = 32;
+const BATCH = 16;
+const INSERT_BATCH = 4;
 const MAX_TEXT_BYTES = 5 * 1024 * 1024;
 const MAX_FILES_PER_FOLDER = 200;
 
@@ -163,7 +164,7 @@ async function ingestOne(userId: string, fileId: string, name: string, mimeType:
     await supabaseAdmin.from("documents").update({
       title: name, mime_type: mimeType, status: "ingesting", error: null,
     }).eq("id", docId);
-    await supabaseAdmin.from("document_chunks").delete().eq("document_id", docId);
+    try { await supabaseAdmin.from("document_chunks").delete().eq("document_id", docId); } catch (e) { console.warn("chunk delete slow:", e); }
   } else {
     const ins = await supabaseAdmin.from("documents").insert({
       user_id: userId, title: name, storage_path: storagePath,
@@ -190,8 +191,11 @@ async function ingestOne(userId: string, fileId: string, name: string, mimeType:
         document_id: docId, user_id: userId, chunk_index: i + k, content,
         embedding: vectors[k] as any, token_estimate: Math.ceil(content.length / 4),
       }));
-      const { error } = await supabaseAdmin.from("document_chunks").insert(rows);
-      if (error) throw error;
+      for (let j = 0; j < rows.length; j += INSERT_BATCH) {
+        const sub = rows.slice(j, j + INSERT_BATCH);
+        const { error } = await supabaseAdmin.from("document_chunks").insert(sub);
+        if (error) throw error;
+      }
       inserted += rows.length;
     }
     await supabaseAdmin.from("documents").update({
