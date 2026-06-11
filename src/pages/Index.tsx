@@ -111,8 +111,7 @@ export default function Index() {
 
       if (!activeConvIdRef.current) {
         const savedConversationId = localStorage.getItem(LAST_ACTIVE_CONVERSATION_KEY);
-        const shouldRestore = savedConversationId && convs.some((c) => c.id === savedConversationId);
-        if (shouldRestore) {
+        if (savedConversationId && convs.some((c) => c.id === savedConversationId)) {
           activeConvIdRef.current = savedConversationId;
           setActiveConvId(savedConversationId);
           try {
