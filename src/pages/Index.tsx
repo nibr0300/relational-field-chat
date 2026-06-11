@@ -200,7 +200,7 @@ export default function Index() {
       content: text,
       attachments,
     };
-    const aiUserMsg: Msg = docTexts.length > 0 ? { ...userMsg, content: aiContent } : userMsg;
+    const aiUserMsg: Msg = aiContent !== text ? { ...userMsg, content: aiContent } : userMsg;
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
