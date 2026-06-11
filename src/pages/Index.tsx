@@ -40,6 +40,7 @@ const WELCOME: Msg = {
 
 const MAX_DOC_CHARS = 8_000;
 const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
+const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
 
 async function readMarkdownPreview(file: File): Promise<string> {
   const text = await file.slice(0, MARKDOWN_READ_BYTES).text();
@@ -62,6 +63,14 @@ export default function Index() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeConvIdRef.current = activeConvId;
+    if (activeConvId) {
+      localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, activeConvId);
+    }
+  }, [activeConvId]);
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
   const handleInitiative = useCallback((text: string, level: number) => {
@@ -99,6 +108,21 @@ export default function Index() {
           ? `Aktiv session är ${email}. Historiken ligger under ${ARCHIVE_OWNER_EMAIL}.`
           : null,
       );
+
+      if (!activeConvIdRef.current) {
+        const savedConversationId = localStorage.getItem(LAST_ACTIVE_CONVERSATION_KEY);
+        if (savedConversationId && convs.some((c) => c.id === savedConversationId)) {
+          activeConvIdRef.current = savedConversationId;
+          setActiveConvId(savedConversationId);
+          try {
+            const msgs = await loadMessages(savedConversationId);
+            if (!cancelled) setMessages(msgs.length > 0 ? msgs : [WELCOME]);
+          } catch (err) {
+            console.error("Kunde inte återställa aktiv konversation:", err);
+            localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
+          }
+        }
+      }
     };
 
     void loadAuthenticatedArchive().catch((err) => {
@@ -106,9 +130,20 @@ export default function Index() {
       toast.error("Kunde inte ladda historiken");
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
-      setActiveConvId(null);
-      setMessages([WELCOME]);
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        activeConvIdRef.current = null;
+        localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
+        setActiveConvId(null);
+        setMessages([WELCOME]);
+        setConversations([]);
+        setUserEmail(null);
+        setAuthWarning(null);
+        return;
+      }
+
+      if (event !== "SIGNED_IN" && event !== "USER_UPDATED") return;
+
       window.setTimeout(() => {
         void loadAuthenticatedArchive().catch(console.error);
       }, 0);
@@ -132,6 +167,7 @@ export default function Index() {
   }, []);
 
   const handleSelectConversation = useCallback(async (id: string) => {
+    localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, id);
     setActiveConvId(id);
     setSidebarOpen(false);
     try {
@@ -143,6 +179,7 @@ export default function Index() {
   }, []);
 
   const handleNewConversation = useCallback(() => {
+    localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
     setActiveConvId(null);
     setMessages([WELCOME]);
     setSidebarOpen(false);
@@ -150,6 +187,7 @@ export default function Index() {
 
   const handleSignOut = useCallback(async () => {
     await hardSignOut(() => supabase.auth.signOut({ scope: "global" }));
+    localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
     setConversations([]);
     setActiveConvId(null);
     setUserEmail(null);
@@ -162,6 +200,7 @@ export default function Index() {
     try {
       await deleteConversation(id);
       if (activeConvId === id) {
+        localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
         setActiveConvId(null);
         setMessages([WELCOME]);
       }
@@ -264,6 +303,7 @@ export default function Index() {
       try {
         const conv = await createConversation();
         convId = conv.id;
+        localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, convId);
         setActiveConvId(convId);
       } catch {
         toast.error("Kunde inte skapa konversation");
