@@ -99,14 +99,17 @@ function isTextish(mime: string, name: string): boolean {
 async function fetchDriveText(fileId: string, mimeType: string, name: string): Promise<string> {
   if (mimeType in GOOGLE_EXPORT) {
     const exp = GOOGLE_EXPORT[mimeType];
-    const r = await fetch(`${GATEWAY}/files/${fileId}/export?mimeType=${encodeURIComponent(exp)}`, { headers: driveHeaders });
+    const url = `${GATEWAY}/files/${fileId}/export?mimeType=${encodeURIComponent(exp)}&supportsAllDrives=true`;
+    const r = await fetch(url, { headers: driveHeaders });
     if (!r.ok) throw new Error(`export ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const txt = await r.text();
     return txt.slice(0, MAX_TEXT_BYTES);
   }
   if (isTextish(mimeType, name)) {
-    const r = await fetch(`${GATEWAY}/files/${fileId}?alt=media`, { headers: driveHeaders });
+    const url = `${GATEWAY}/files/${fileId}?alt=media&supportsAllDrives=true&acknowledgeAbuse=true`;
+    const r = await fetch(url, { headers: driveHeaders, redirect: "follow" });
     if (!r.ok) throw new Error(`download ${r.status}: ${(await r.text()).slice(0, 200)}`);
+
     let txt = await r.text();
     // Convert Jupyter/Colab notebooks to clean code+markdown
     if (/\.ipynb$/i.test(name)) {
