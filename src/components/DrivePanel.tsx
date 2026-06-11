@@ -18,7 +18,7 @@ const SUPPORTED_MIMES = new Set([
   "application/vnd.google-apps.spreadsheet",
   "application/vnd.google-apps.presentation",
 ]);
-const TEXTISH_RE = /\.(txt|md|markdown|mdx|json|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/i;
+const TEXTISH_RE = /\.(txt|md|markdown|mdx|json|jsonl|ndjson|ipynb|csv|tsv|log|ya?ml|html?|xml|svg|tsx?|jsx?|mjs|cjs|vue|svelte|astro|py|ipy|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|kts|scala|sql|sh|bash|zsh|fish|ps1|bat|toml|ini|conf|cfg|env|gradle|dockerfile|makefile|r|jl|lua|pl|dart|nim|zig|hs|elm|ex|exs|clj|cljs|edn|tex)$/i;
 
 function isIngestable(f: DriveFile): boolean {
   if (f.mimeType === FOLDER_MIME) return false;

@@ -84,9 +84,16 @@ const GOOGLE_EXPORT: Record<string, string> = {
 };
 
 function isTextish(mime: string, name: string): boolean {
-  if (!mime) return /\.(txt|md|markdown|mdx|json|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/i.test(name);
-  return mime.startsWith("text/") || mime === "application/json" || mime === "application/xml" ||
-    mime === "application/javascript" || mime === "application/typescript";
+  const extRe = /\.(txt|md|markdown|mdx|json|jsonl|ndjson|ipynb|csv|tsv|log|ya?ml|html?|xml|svg|tsx?|jsx?|mjs|cjs|vue|svelte|astro|py|ipy|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|kts|scala|sql|sh|bash|zsh|fish|ps1|bat|toml|ini|conf|cfg|env|gradle|dockerfile|makefile|r|jl|lua|pl|dart|nim|zig|hs|elm|ex|exs|clj|cljs|edn|tex)$/i;
+  if (extRe.test(name)) return true;
+  if (!mime) return false;
+  if (mime.startsWith("text/")) return true;
+  if (mime === "application/json" || mime === "application/xml" ||
+      mime === "application/javascript" || mime === "application/typescript" ||
+      mime === "application/x-ipynb+json" || mime === "application/x-python" ||
+      mime === "application/x-sh" || mime === "application/x-yaml" ||
+      mime === "application/octet-stream") return extRe.test(name);
+  return false;
 }
 
 async function fetchDriveText(fileId: string, mimeType: string, name: string): Promise<string> {
@@ -100,7 +107,21 @@ async function fetchDriveText(fileId: string, mimeType: string, name: string): P
   if (isTextish(mimeType, name)) {
     const r = await fetch(`${GATEWAY}/files/${fileId}?alt=media`, { headers: driveHeaders });
     if (!r.ok) throw new Error(`download ${r.status}: ${(await r.text()).slice(0, 200)}`);
-    const txt = await r.text();
+    let txt = await r.text();
+    // Convert Jupyter/Colab notebooks to clean code+markdown
+    if (/\.ipynb$/i.test(name)) {
+      try {
+        const nb = JSON.parse(txt);
+        const parts: string[] = [];
+        for (const cell of nb.cells ?? []) {
+          const src = Array.isArray(cell.source) ? cell.source.join("") : (cell.source ?? "");
+          if (!src.trim()) continue;
+          if (cell.cell_type === "code") parts.push("```python\n" + src + "\n```");
+          else parts.push(src);
+        }
+        txt = parts.join("\n\n");
+      } catch { /* fall back to raw JSON */ }
+    }
     return txt.slice(0, MAX_TEXT_BYTES);
   }
   throw new Error(`Filtypen ${mimeType || name.split(".").pop()} stöds inte ännu i Drive-indexering (PDF/binärt). Använd Google Docs eller textfiler.`);
