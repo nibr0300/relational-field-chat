@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { clearStoredAuthSession } from "@/lib/auth-session";
+import { ARCHIVE_OWNER_EMAIL } from "@/lib/archive-owner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,12 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const warning = sessionStorage.getItem("rfa-auth-warning");
+    if (warning) {
+      sessionStorage.removeItem("rfa-auth-warning");
+      toast.error(warning);
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate("/", { replace: true });
     });
@@ -51,7 +58,7 @@ export default function Auth() {
     clearStoredAuthSession();
     const r = await lovable.auth.signInWithOAuth("google", {
       redirect_uri: window.location.origin,
-      extraParams: { prompt: "select_account", login_hint: "visiontruthdesign@gmail.com" },
+      extraParams: { prompt: "select_account consent", login_hint: ARCHIVE_OWNER_EMAIL },
     });
     if (r.error) toast.error(String(r.error));
   }
