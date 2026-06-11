@@ -28,7 +28,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     };
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      void acceptSession(s);
+      window.setTimeout(() => {
+        void acceptSession(s);
+      }, 0);
     });
     supabase.auth.getSession().then(({ data }) => void acceptSession(data.session));
     return () => {
