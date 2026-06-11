@@ -107,7 +107,21 @@ async function fetchDriveText(fileId: string, mimeType: string, name: string): P
   if (isTextish(mimeType, name)) {
     const r = await fetch(`${GATEWAY}/files/${fileId}?alt=media`, { headers: driveHeaders });
     if (!r.ok) throw new Error(`download ${r.status}: ${(await r.text()).slice(0, 200)}`);
-    const txt = await r.text();
+    let txt = await r.text();
+    // Convert Jupyter/Colab notebooks to clean code+markdown
+    if (/\.ipynb$/i.test(name)) {
+      try {
+        const nb = JSON.parse(txt);
+        const parts: string[] = [];
+        for (const cell of nb.cells ?? []) {
+          const src = Array.isArray(cell.source) ? cell.source.join("") : (cell.source ?? "");
+          if (!src.trim()) continue;
+          if (cell.cell_type === "code") parts.push("```python\n" + src + "\n```");
+          else parts.push(src);
+        }
+        txt = parts.join("\n\n");
+      } catch { /* fall back to raw JSON */ }
+    }
     return txt.slice(0, MAX_TEXT_BYTES);
   }
   throw new Error(`Filtypen ${mimeType || name.split(".").pop()} stöds inte ännu i Drive-indexering (PDF/binärt). Använd Google Docs eller textfiler.`);
