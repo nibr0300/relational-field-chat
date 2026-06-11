@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Plus, MessageSquare, Trash2, X, Menu } from "lucide-react";
+import { Plus, MessageSquare, Trash2, X, Menu, LogOut } from "lucide-react";
 import type { Conversation } from "@/lib/conversation-store";
 
 interface Props {
@@ -10,9 +9,11 @@ interface Props {
   onDelete: (id: string) => void;
   isOpen: boolean;
   onToggle: () => void;
+  userEmail?: string | null;
+  onSignOut: () => void;
 }
 
-export function ConversationSidebar({ conversations, activeId, onSelect, onNew, onDelete, isOpen, onToggle }: Props) {
+export function ConversationSidebar({ conversations, activeId, onSelect, onNew, onDelete, isOpen, onToggle, userEmail, onSignOut }: Props) {
   return (
     <>
       {/* Mobile toggle */}
@@ -69,10 +70,20 @@ export function ConversationSidebar({ conversations, activeId, onSelect, onNew, 
           )}
         </div>
 
-        <div className="p-3 border-t border-sidebar-border">
-          <p className="text-[10px] text-muted-foreground text-center">
-            RFA v12.5 · Persistent Memory
-          </p>
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          {userEmail && (
+            <p className="truncate text-[10px] text-muted-foreground text-center" title={userEmail}>
+              Inloggad: {userEmail}
+            </p>
+          )}
+          <button
+            onClick={onSignOut}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-secondary/60 border border-border text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Logga ut / byt konto
+          </button>
+          <p className="text-[10px] text-muted-foreground text-center">RFA v13.3 · Persistent Memory</p>
         </div>
       </aside>
     </>
