@@ -1,17 +1,20 @@
-import { Zap, Search, Image, Brain, Code } from "lucide-react";
+import { Zap, Search, Image, Brain, Code, Library } from "lucide-react";
 import { LimbusPulse } from "./LimbusPulse";
 import type { PrmMeta } from "@/lib/rfa-stream";
 
 export function RFAHeader({
   onMemoryClick,
+  onArchiveClick,
   prmSignal,
 }: {
   onMemoryClick?: () => void;
+  onArchiveClick?: () => void;
   prmSignal?: PrmMeta | null;
 }) {
   const capabilities = [
     { icon: Search, label: "Web" },
     { icon: Brain, label: "Minne", onClick: onMemoryClick },
+    { icon: Library, label: "Arkiv", onClick: onArchiveClick },
     { icon: Image, label: "Vision" },
     { icon: Code, label: "Kod" },
   ];
@@ -43,15 +46,26 @@ export function RFAHeader({
             </button>
           ))}
         </div>
-        {onMemoryClick && (
-          <button
-            onClick={onMemoryClick}
-            aria-label="Öppna minne"
-            className="sm:hidden flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          >
-            <Brain className="w-4 h-4 text-primary/80" />
-          </button>
-        )}
+        <div className="sm:hidden flex items-center gap-1">
+          {onMemoryClick && (
+            <button
+              onClick={onMemoryClick}
+              aria-label="Öppna minne"
+              className="flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <Brain className="w-4 h-4 text-primary/80" />
+            </button>
+          )}
+          {onArchiveClick && (
+            <button
+              onClick={onArchiveClick}
+              aria-label="Öppna arkivet"
+              className="flex items-center justify-center w-9 h-9 rounded-md bg-secondary/60 border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <Library className="w-4 h-4 text-primary/80" />
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
