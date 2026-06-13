@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { formatEmojiFieldLine, EMOJI_FIELD_LEGEND } from "./emoji-prosody.ts";
+
+// Feature flag: emoji-prosodi som ENDA fältinjektion till huvudmodellen.
+// När på: en rad istället för 4 textblock. Lambda/Gate/Prospective signaleras
+// fortfarande via SSE-meta till UI:t — bara modellens prompt slankas.
+const EMOJI_FIELD_ENABLED = (Deno.env.get("RFA_EMOJI_V1") ?? "1") !== "0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
