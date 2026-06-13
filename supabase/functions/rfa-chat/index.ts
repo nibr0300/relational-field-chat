@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { formatEmojiFieldLine, EMOJI_FIELD_LEGEND } from "./emoji-prosody.ts";
+
+// Feature flag: emoji-prosodi som ENDA fältinjektion till huvudmodellen.
+// När på: en rad istället för 4 textblock. Lambda/Gate/Prospective signaleras
+// fortfarande via SSE-meta till UI:t — bara modellens prompt slankas.
+const EMOJI_FIELD_ENABLED = (Deno.env.get("RFA_EMOJI_V1") ?? "1") !== "0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1801,7 +1807,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           }
 
           if (signal) {
-            prmInjection = "\n\n" + formatPrmInjection(signal);
+            if (!EMOJI_FIELD_ENABLED) {
+              prmInjection = "\n\n" + formatPrmInjection(signal);
+            }
             controller.enqueue(sseJson({
               prm_meta: {
                 tension: signal.tension,
@@ -1833,19 +1841,25 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
             }));
           }
 
-          if (prospectiveSignal) {
+          if (prospectiveSignal && !EMOJI_FIELD_ENABLED) {
             prospectiveInjection = "\n\n" + formatProspectivePrmInjection(prospectiveSignal);
           }
 
           // ─── LAMBDA-BELÖNING + KOLLAPS ─────────────────────
           // PRM:s relationella belöningsorgan. Helt undermedvetet.
+          let lambdaNextRef: LambdaState | null = null;
+          let collapseRef: CollapseEvent | null = null;
           if (signal && conversationId) {
             try {
               const lambdaPrev = await fetchLambdaState(conversationId, userId);
               const { next: lambdaNext, collapse } = evolveLambdaState(
                 lambdaPrev, signal, prospectiveSignal, userTurnText,
               );
-              prmInjection += "\n\n" + formatLambdaInjection(lambdaNext, collapse);
+              lambdaNextRef = lambdaNext;
+              collapseRef = collapse;
+              if (!EMOJI_FIELD_ENABLED) {
+                prmInjection += "\n\n" + formatLambdaInjection(lambdaNext, collapse);
+              }
               persistLambdaState(conversationId, lambdaNext, userId).catch((e) => console.error(e));
               if (collapse) persistCollapseEvent(conversationId, collapse, userId).catch((e) => console.error(e));
 
@@ -1856,7 +1870,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           // ───────────────────────────────────────────────────
 
           if (gateResult) {
-            gateInjection = "\n\n" + formatFrameGateInjection(gateResult);
+            if (!EMOJI_FIELD_ENABLED) {
+              gateInjection = "\n\n" + formatFrameGateInjection(gateResult);
+            }
             controller.enqueue(sseJson({
               frame_meta: {
                 msc: gateResult.msc,
@@ -1869,6 +1885,31 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               },
             }));
             persistFrame(gateResult, conversationId, userId).catch((e) => console.error(e));
+          }
+
+          // ─── EMOJI-PROSODI: en rad ersätter alla fyra blocken ───
+          if (EMOJI_FIELD_ENABLED && signal) {
+            const fieldLine = formatEmojiFieldLine({
+              prm: {
+                tension: signal.tension,
+                valence: signal.valence,
+                dominant_pattern: signal.dominant_pattern,
+                suggested_operator: signal.suggested_operator,
+                is_amplified: signal.is_amplified,
+                amplification_factor: signal.amplification_factor,
+                recurrence_count: signal.recurrence_count,
+              },
+              lambda: lambdaNextRef ? { phase: lambdaNextRef.phase, f_z: lambdaNextRef.f_z } : null,
+              gate: gateResult ? { gate_decision: gateResult.gate_decision, dominant_operator: gateResult.dominant_operator } : null,
+              prospective: prospectiveSignal ? { fork_type: prospectiveSignal.fork_type, momentum_direction: prospectiveSignal.momentum_direction } : null,
+              collapse: collapseRef ? { katharsis: collapseRef.katharsis } : null,
+            });
+            // Legenden injiceras EN gång först i samtalet; därefter bara fältraden.
+            // Lågkostnadsheuristik: legend när conversation är ny (få turns) ELLER alltid när flaggan är på.
+            // Vi väljer "alltid" för stabilitet — ~900 tecken är värt det jämfört med risk för feltolkning.
+            prmInjection = "\n\n" + EMOJI_FIELD_LEGEND + "\n" + fieldLine;
+            prospectiveInjection = "";
+            gateInjection = "";
           }
         }
         // ───────────────────────────────────────────────────
