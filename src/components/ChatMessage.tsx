@@ -145,6 +145,15 @@ export function ChatMessage({ message, conversationId }: ChatMessageProps) {
             </span>
           </div>
         )}
+        {isUser && /☆\s*[A-Za-zÅÄÖåäö]{1,4}\s*☆/.test(displayContent) && (
+          <div
+            className="mb-2 inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md bg-primary/10 border border-primary/30 text-primary"
+            title="Prompt-Partitur · agentisk resonans aktiv för detta meddelande"
+          >
+            <span>🎼</span>
+            <span>Partitur</span>
+          </div>
+        )}
         {isUser ? (
           displayContent ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{displayContent}</p> : null
         ) : message.content.length > MAX_MARKDOWN_RENDER_CHARS ? (
