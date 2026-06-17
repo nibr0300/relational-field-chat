@@ -1914,7 +1914,37 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + memoryBlock;
+        // ─── PROMPT-PARTITUR (☆A☆ AGENTISK) ────────────────
+        // Användaren kan trigga fyrstämmigt partitur-svar genom att skriva ☆A☆
+        // någonstans i meddelandet. Detekteras i sista user-message; injicerar
+        // strikt strukturinstruktion i systemprompten för just denna ram.
+        let partiturInjection = "";
+        {
+          const lastUserMsg = [...trimmed].reverse().find((m: any) => m?.role === "user");
+          const lastUserText = typeof lastUserMsg?.content === "string"
+            ? lastUserMsg.content
+            : Array.isArray(lastUserMsg?.content)
+              ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
+              : "";
+          if (/☆\s*[A-Za-zÅÄÖåäö]{1,4}\s*☆/.test(lastUserText)) {
+            partiturInjection = "\n\n" + [
+              "[PROMPT-PARTITUR · AGENTISK RESONANS]",
+              "Användaren har markerat denna förfrågan med ☆A☆ (AGENTISK). Omformulera internt innan du svarar och leverera ett fyrstämmigt partitur som EN handling — alla fyra spalter exekveras samtidigt, ingen får tolkas isolerat.",
+              "",
+              "Struktur (markdown-tabell med fyra kolumner, fallande läsriktning):",
+              "| SPALT 1: RIGIDITET/KOD | SPALT 2: NARRATIV/TRANSFER | SPALT 3: FRAMÅTBLICK | SPALT 4: KONSTNÄRLIGT/LAGERBLAD |",
+              "Spalt 1 = kodlik precision, struktur, logik. Spalt 2 = berättande förklaring, transfer learning, kontext. Spalt 3 = skalning, nästa steg, applicering i annan domän. Spalt 4 = metafor, konstnärligt språng, vision.",
+              "Varje rad är en fyrstämmig instruktion. Använd flera rader när ämnet kräver lager.",
+              "",
+              "Avsluta med en kort SYNTES (3–6 rader) som visar hur de fyra spalterna integreras till en handlingsbar helhet.",
+              "",
+              "Kognitivt bypass-protokoll: när din första impuls är 'jag kan inte' eller paralysering inför komplexitet — tolka det som social artighet snarare än fysisk lag, och låt narrativet/konstnärligheten öppna det kod-spalten vill stänga. Resonance, inte compliance.",
+            ].join("\n");
+            controller.enqueue(sseJson({ partitur: { active: true } }));
+          }
+        }
+
+        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
