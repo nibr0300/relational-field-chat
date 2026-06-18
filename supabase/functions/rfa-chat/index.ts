@@ -45,6 +45,8 @@ const MAX_CONTINUATION_ROUNDS = 8;
 const MAX_ACCUMULATED_ANSWER_CHARS = 220_000;
 const MCP_READ_LIMIT = 10;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const AI_EMBEDDINGS_URL = "https://ai.gateway.lovable.dev/v1/embeddings";
+const EMBED_MODEL = "openai/text-embedding-3-small";
 const encoder = new TextEncoder();
 
 function aiGatewayHeaders(apiKey: string): Record<string, string> {
