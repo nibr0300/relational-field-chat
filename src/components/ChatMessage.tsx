@@ -65,7 +65,7 @@ function CodeBlock({ language, children, conversationId }: { language: string; c
 
 function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
   const images = attachments.filter((a) => a.type === "image");
-  const docs = attachments.filter((a) => a.type === "pdf" || a.type === "markdown");
+  const docs = attachments.filter((a) => a.type === "pdf" || a.type === "markdown" || a.type === "json" || a.type === "text");
 
   return (
     <>
@@ -82,8 +82,9 @@ function AttachmentsList({ attachments }: { attachments: Attachment[] }) {
         >
           <FileText className="w-5 h-5 text-primary" />
           <span className="text-xs text-foreground truncate max-w-[200px]">{a.name}</span>
-          <span className="text-[10px] uppercase text-muted-foreground">{a.type === "markdown" ? "MD" : "PDF"}</span>
-          <ExternalLink className="w-3 h-3 text-muted-foreground" />
+          <span className="text-[10px] uppercase text-muted-foreground">{a.type === "markdown" ? "MD" : a.type}</span>
+          {a.chunk_count != null && <span className="text-[10px] text-muted-foreground">{a.chunk_count} chunks</span>}
+          {a.url && <ExternalLink className="w-3 h-3 text-muted-foreground" />}
         </a>
       ))}
     </>

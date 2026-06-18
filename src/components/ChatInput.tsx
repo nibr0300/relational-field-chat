@@ -4,6 +4,8 @@ import { Send, Paperclip, X, FileText } from "lucide-react";
 interface AttachedFile {
   file: File;
   type: "image" | "pdf" | "markdown" | "json" | "text";
+  documentId?: string;
+  chunkCount?: number;
   preview?: string; // data URL for images
 }
 

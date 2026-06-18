@@ -85,7 +85,7 @@ async function extractText(file: File): Promise<string> {
 
 export async function uploadAndIngest(
   file: File,
-  opts: { title?: string; tags?: string[] } = {},
+  opts: { title?: string; tags?: string[]; dedupe?: boolean } = {},
 ): Promise<DocumentRow> {
   const { data: userData } = await supabase.auth.getUser();
   const uid = userData.user?.id;
@@ -94,14 +94,16 @@ export async function uploadAndIngest(
   const title = opts.title || file.name;
 
   // Dedupe: skip if a document with the same title already exists for this user
-  const existing = await supabase
-    .from("documents" as any)
-    .select("*")
-    .eq("title", title)
-    .limit(1)
-    .maybeSingle();
-  if (existing.data) {
-    return existing.data as unknown as DocumentRow;
+  if (opts.dedupe !== false) {
+    const existing = await supabase
+      .from("documents" as any)
+      .select("*")
+      .eq("title", title)
+      .limit(1)
+      .maybeSingle();
+    if (existing.data) {
+      return existing.data as unknown as DocumentRow;
+    }
   }
 
   const safeName = file.name.replace(/[^\w.\- ]+/g, "_");
