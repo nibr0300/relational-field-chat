@@ -17,26 +17,32 @@ interface ChatInputProps {
 export type { AttachedFile };
 
 const DRAFT_KEY = "rfa:chat-input-draft";
+const MEMORY_DRAFT_KEY = "__rfaChatInputDraft";
+
+type DraftWindow = Window & { [MEMORY_DRAFT_KEY]?: string };
 
 function readDraft() {
   if (typeof window === "undefined") return "";
+  const memoryDraft = (window as DraftWindow)[MEMORY_DRAFT_KEY];
   try {
-    return localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(DRAFT_KEY) ?? "";
-  } catch {
-    return "";
-  }
+    const stored = localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(DRAFT_KEY);
+    return stored ?? memoryDraft ?? "";
+  } catch { /* fall through to in-memory fallback */ }
+  return memoryDraft ?? "";
 }
 
 function writeDraft(value: string) {
   if (typeof window === "undefined") return;
+  (window as DraftWindow)[MEMORY_DRAFT_KEY] = value;
+  const write = (store: Storage) => {
+    if (value) store.setItem(DRAFT_KEY, value);
+    else store.removeItem(DRAFT_KEY);
+  };
   try {
-    if (value) {
-      localStorage.setItem(DRAFT_KEY, value);
-      sessionStorage.setItem(DRAFT_KEY, value);
-    } else {
-      localStorage.removeItem(DRAFT_KEY);
-      sessionStorage.removeItem(DRAFT_KEY);
-    }
+    write(localStorage);
+  } catch { /* ignore storage errors */ }
+  try {
+    write(sessionStorage);
   } catch { /* ignore storage errors */ }
 }
 
@@ -63,10 +69,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   }, [input]);
 
   useEffect(() => {
-    const flushDraft = () => writeDraft(inputRef.current);
+    const flushDraft = () => writeDraft(textareaRef.current?.value ?? inputRef.current);
     window.addEventListener("beforeunload", flushDraft);
     window.addEventListener("pagehide", flushDraft);
     document.addEventListener("visibilitychange", flushDraft);
+    import.meta.hot?.dispose(flushDraft);
     return () => {
       flushDraft();
       window.removeEventListener("beforeunload", flushDraft);
