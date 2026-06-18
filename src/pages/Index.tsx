@@ -261,30 +261,25 @@ export default function Index() {
       aiContent = prefix + docTexts.join("\n\n---\n\n");
     }
 
-    // ─── ARKIV: semantisk auto-rekonstruktion + explicit @-mention ───
-    // @filnamn/@arkiv → tvångsinjicera. Annars: tyst semantisk sökning;
-    // injicera bara om träffar är tillräckligt relevanta (sim ≥ 0.35),
-    // så modellen faktiskt "ser" uppladdat material utan kontinuerlig brus-ström.
+    // ─── ARKIV: endast vid explicit @-mention (@filnamn eller @arkiv) ───
+    // Auto-sökning bröt mot Processing-Memory Unity (passiv ström, FZ↑, MSC↓).
+    // Minne ska vara aktiv rekonstruktion — modellen får arkivkontext bara när användaren kallar den.
     try {
       if (text.trim().length > 0) {
         const mentions = extractMentions(text);
         const hasMention = mentions.all || mentions.tokens.length > 0;
-        let docIds: string[] | undefined;
-        let k = 6;
         if (hasMention) {
-          k = mentions.all ? 10 : 8;
+          let docIds: string[] | undefined;
+          const k = mentions.all ? 10 : 8;
           if (!mentions.all) {
             const resolved = await resolveMentions(mentions.tokens);
             docIds = resolved.length ? resolved : undefined;
           }
-        }
-        const matches = await searchDocuments(text, { k, documentIds: docIds });
-        const relevant = hasMention
-          ? matches
-          : matches.filter((m) => m.similarity >= 0.35);
-        if (relevant.length > 0) {
-          const ctx = formatChunksForContext(relevant);
-          aiContent = `${ctx}\n\n${aiContent}`;
+          const matches = await searchDocuments(text, { k, documentIds: docIds });
+          if (matches.length > 0) {
+            const ctx = formatChunksForContext(matches);
+            aiContent = `${ctx}\n\n${aiContent}`;
+          }
         }
       }
     } catch (e) {
