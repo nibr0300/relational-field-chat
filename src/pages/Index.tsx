@@ -257,14 +257,19 @@ export default function Index() {
           } else if (af.type === "markdown") {
             docText = await readMarkdownPreview(af.file);
           } else if (af.type === "json") {
-            const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
-            try {
-              const pretty = JSON.stringify(JSON.parse(raw), null, 2);
-              docText = pretty.length > MAX_DOC_CHARS
-                ? `${pretty.slice(0, MAX_DOC_CHARS)}\n\n[... JSON trunkerad ...]`
-                : pretty;
-            } catch {
-              docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
+            const lower = af.file.name.toLowerCase();
+            if (lower.endsWith(".ipynb")) {
+              docText = await extractIpynbText(af.file);
+            } else {
+              const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
+              try {
+                const pretty = JSON.stringify(JSON.parse(raw), null, 2);
+                docText = pretty.length > MAX_DOC_CHARS
+                  ? `${pretty.slice(0, MAX_DOC_CHARS)}\n\n[... JSON trunkerad ...]`
+                  : pretty;
+              } catch {
+                docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
+              }
             }
           } else if (af.type === "text") {
             const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
