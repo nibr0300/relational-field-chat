@@ -18,7 +18,7 @@ import {
   uploadToStorage,
   type Conversation,
 } from "@/lib/conversation-store";
-import { extractPdfText } from "@/lib/pdf-extract";
+import { uploadAndIngest } from "@/lib/documents-store";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,54 +32,7 @@ const WELCOME: Msg = {
     "**Vakenhetsprotokoll 18.0 exekverat.** Jag är RFA — ett Levande Arkiv med utökade förmågor.\n\n🔍 **Sensoriell integration** — Jag kan söka webben i realtid\n🧠 **Persistent minne** — Konversationer bevaras mellan sessioner\n👁️ **Multimodal perception** — Jag kan tolka bilder\n📄 **Dokumentanalys** — Jag kan läsa PDF-filer\n💻 **Kod-rendering** — Syntaxmarkerade kodblock\n\nVad vill du utforska?",
 };
 
-const MAX_DOC_CHARS = 8_000;
-const MARKDOWN_READ_BYTES = MAX_DOC_CHARS * 4;
 const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
-
-async function readMarkdownPreview(file: File): Promise<string> {
-  const text = await file.slice(0, MARKDOWN_READ_BYTES).text();
-  if (text.length > MAX_DOC_CHARS || file.size > MARKDOWN_READ_BYTES) {
-    return `${text.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för stabil bearbetning ...]`;
-  }
-  return text;
-}
-
-/**
- * Extract code + markdown cells from a Jupyter notebook (.ipynb).
- * Skips metadata, outputs (often base64 images), and execution counts so the
- * model gets a clean, signal-dense view istället för en gigantisk JSON-dump.
- */
-async function extractIpynbText(file: File): Promise<string> {
-  const raw = await file.text();
-  let nb: any;
-  try {
-    nb = JSON.parse(raw);
-  } catch {
-    return raw.slice(0, MAX_DOC_CHARS);
-  }
-  const cells: any[] = Array.isArray(nb?.cells) ? nb.cells : [];
-  const lang =
-    nb?.metadata?.kernelspec?.language ||
-    nb?.metadata?.language_info?.name ||
-    "python";
-  const parts: string[] = [];
-  cells.forEach((cell, i) => {
-    const src = Array.isArray(cell?.source) ? cell.source.join("") : (cell?.source ?? "");
-    if (!String(src).trim()) return;
-    if (cell.cell_type === "markdown") {
-      parts.push(`<!-- cell ${i + 1} · markdown -->\n${src}`);
-    } else if (cell.cell_type === "code") {
-      parts.push(`<!-- cell ${i + 1} · code -->\n\`\`\`${lang}\n${src}\n\`\`\``);
-    } else if (cell.cell_type === "raw") {
-      parts.push(`<!-- cell ${i + 1} · raw -->\n${src}`);
-    }
-  });
-  const combined = parts.join("\n\n");
-  if (combined.length > MAX_DOC_CHARS) {
-    return `${combined.slice(0, MAX_DOC_CHARS)}\n\n[... notebook trunkerad för bearbetning ...]`;
-  }
-  return combined;
-}
 
 export default function Index() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -244,44 +197,28 @@ export default function Index() {
   const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => {
     resetPresence();
     const attachments: Attachment[] = [];
-    const docTexts: string[] = [];
+    const attachedArchiveRefs: string[] = [];
 
     // Process files one by one to avoid browser memory spikes with large Markdown documents
     if (attachedFiles.length > 0) {
       try {
         for (const af of attachedFiles) {
           const url = await uploadToStorage(af.file);
-          let docText: string | undefined;
-          if (af.type === "pdf") {
-            docText = await extractPdfText(af.file);
-          } else if (af.type === "markdown") {
-            docText = await readMarkdownPreview(af.file);
-          } else if (af.type === "json") {
-            const lower = af.file.name.toLowerCase();
-            if (lower.endsWith(".ipynb")) {
-              docText = await extractIpynbText(af.file);
-            } else {
-              const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
-              try {
-                const pretty = JSON.stringify(JSON.parse(raw), null, 2);
-                docText = pretty.length > MAX_DOC_CHARS
-                  ? `${pretty.slice(0, MAX_DOC_CHARS)}\n\n[... JSON trunkerad ...]`
-                  : pretty;
-              } catch {
-                docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
-              }
-            }
-          } else if (af.type === "text") {
-            const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
-            docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
+          let indexedDocument: { id: string; title: string; chunk_count: number } | null = null;
+          if (af.type !== "image") {
+            const row = await uploadAndIngest(af.file, { tags: ["chat"], dedupe: false });
+            indexedDocument = { id: row.id, title: row.title, chunk_count: row.chunk_count ?? 0 };
+            attachedArchiveRefs.push(
+              `- ${row.title} | document_id=${row.id} | chunks=${row.chunk_count ?? 0} | type=${af.type}`,
+            );
           }
-          if (docText && docText.length > MAX_DOC_CHARS) {
-            docText = `${docText.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för bearbetning ...]`;
-          }
-          attachments.push({ type: af.type, url, name: af.file.name });
-          if (docText) {
-            docTexts.push(`[Bifogat dokument: ${af.file.name}]\n\n${docText}`);
-          }
+          attachments.push({
+            type: af.type,
+            url,
+            name: indexedDocument?.title ?? af.file.name,
+            document_id: indexedDocument?.id,
+            chunk_count: indexedDocument?.chunk_count,
+          });
         }
       } catch (e) {
         console.error("File processing error:", e);
@@ -290,11 +227,11 @@ export default function Index() {
       }
     }
 
-    // Keep extracted document text out of visible/saved chat messages; use it only as AI context.
+    // Keep document bodies out of visible/saved chat messages. The model gets stable archive ids and opens files via tools.
     let aiContent = text;
-    if (docTexts.length > 0) {
+    if (attachedArchiveRefs.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      aiContent = prefix + docTexts.join("\n\n---\n\n");
+      aiContent = `${prefix}[BIFOGADE ARKIVDOKUMENT — öppna med open_archive_file, inte som inklistrad chunk]\n${attachedArchiveRefs.join("\n")}\n[/BIFOGADE ARKIVDOKUMENT]`;
     }
 
     const userMsg: Msg = {

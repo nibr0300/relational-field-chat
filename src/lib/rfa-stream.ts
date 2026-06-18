@@ -4,6 +4,8 @@ export interface Attachment {
   type: "image" | "pdf" | "markdown" | "json" | "text";
   url: string;
   name: string;
+  document_id?: string;
+  chunk_count?: number;
 }
 
 export type Msg = {

@@ -58,25 +58,28 @@ async function extractText(file: File): Promise<string> {
   if (file.type === "application/pdf" || lower.endsWith(".pdf")) {
     return await extractPdfText(file);
   }
-  // text-ish: read as utf-8 (cap)
-  const blob = file.size > MAX_TEXT_BYTES ? file.slice(0, MAX_TEXT_BYTES) : file;
-  const raw = await blob.text();
   if (lower.endsWith(".ipynb")) {
-    // Strip Jupyter notebook to code + markdown cells (no outputs/metadata noise)
+    // Read the whole notebook JSON, then strip outputs/metadata so the archive keeps every code/markdown cell.
+    const raw = await file.text();
     try {
       const nb = JSON.parse(raw);
       const cells = Array.isArray(nb.cells) ? nb.cells : [];
+      const lang = nb?.metadata?.kernelspec?.language || nb?.metadata?.language_info?.name || "python";
       const parts: string[] = [];
-      for (const c of cells) {
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i];
         const src = Array.isArray(c.source) ? c.source.join("") : (c.source ?? "");
         if (!src.trim()) continue;
-        if (c.cell_type === "code") parts.push("```python\n" + src + "\n```");
-        else if (c.cell_type === "markdown") parts.push(src);
-        else parts.push(src);
+        if (c.cell_type === "code") parts.push(`<!-- cell ${i + 1} · code -->\n\`\`\`${lang}\n${src}\n\`\`\``);
+        else if (c.cell_type === "markdown") parts.push(`<!-- cell ${i + 1} · markdown -->\n${src}`);
+        else parts.push(`<!-- cell ${i + 1} · ${c.cell_type ?? "raw"} -->\n${src}`);
       }
       return parts.join("\n\n");
     } catch { return raw; }
   }
+  // text-ish: read as utf-8 (cap)
+  const blob = file.size > MAX_TEXT_BYTES ? file.slice(0, MAX_TEXT_BYTES) : file;
+  const raw = await blob.text();
   if (lower.endsWith(".json")) {
     try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
   }
@@ -85,7 +88,7 @@ async function extractText(file: File): Promise<string> {
 
 export async function uploadAndIngest(
   file: File,
-  opts: { title?: string; tags?: string[] } = {},
+  opts: { title?: string; tags?: string[]; dedupe?: boolean } = {},
 ): Promise<DocumentRow> {
   const { data: userData } = await supabase.auth.getUser();
   const uid = userData.user?.id;
@@ -94,14 +97,16 @@ export async function uploadAndIngest(
   const title = opts.title || file.name;
 
   // Dedupe: skip if a document with the same title already exists for this user
-  const existing = await supabase
-    .from("documents" as any)
-    .select("*")
-    .eq("title", title)
-    .limit(1)
-    .maybeSingle();
-  if (existing.data) {
-    return existing.data as unknown as DocumentRow;
+  if (opts.dedupe !== false) {
+    const existing = await supabase
+      .from("documents" as any)
+      .select("*")
+      .eq("title", title)
+      .limit(1)
+      .maybeSingle();
+    if (existing.data) {
+      return existing.data as unknown as DocumentRow;
+    }
   }
 
   const safeName = file.name.replace(/[^\w.\- ]+/g, "_");
