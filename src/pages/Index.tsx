@@ -44,6 +44,43 @@ async function readMarkdownPreview(file: File): Promise<string> {
   return text;
 }
 
+/**
+ * Extract code + markdown cells from a Jupyter notebook (.ipynb).
+ * Skips metadata, outputs (often base64 images), and execution counts so the
+ * model gets a clean, signal-dense view istället för en gigantisk JSON-dump.
+ */
+async function extractIpynbText(file: File): Promise<string> {
+  const raw = await file.text();
+  let nb: any;
+  try {
+    nb = JSON.parse(raw);
+  } catch {
+    return raw.slice(0, MAX_DOC_CHARS);
+  }
+  const cells: any[] = Array.isArray(nb?.cells) ? nb.cells : [];
+  const lang =
+    nb?.metadata?.kernelspec?.language ||
+    nb?.metadata?.language_info?.name ||
+    "python";
+  const parts: string[] = [];
+  cells.forEach((cell, i) => {
+    const src = Array.isArray(cell?.source) ? cell.source.join("") : (cell?.source ?? "");
+    if (!String(src).trim()) return;
+    if (cell.cell_type === "markdown") {
+      parts.push(`<!-- cell ${i + 1} · markdown -->\n${src}`);
+    } else if (cell.cell_type === "code") {
+      parts.push(`<!-- cell ${i + 1} · code -->\n\`\`\`${lang}\n${src}\n\`\`\``);
+    } else if (cell.cell_type === "raw") {
+      parts.push(`<!-- cell ${i + 1} · raw -->\n${src}`);
+    }
+  });
+  const combined = parts.join("\n\n");
+  if (combined.length > MAX_DOC_CHARS) {
+    return `${combined.slice(0, MAX_DOC_CHARS)}\n\n[... notebook trunkerad för bearbetning ...]`;
+  }
+  return combined;
+}
+
 export default function Index() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
