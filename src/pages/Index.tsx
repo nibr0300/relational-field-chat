@@ -19,6 +19,7 @@ import {
   type Conversation,
 } from "@/lib/conversation-store";
 import { extractPdfText } from "@/lib/pdf-extract";
+import { uploadAndIngest } from "@/lib/documents-store";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -244,44 +245,28 @@ export default function Index() {
   const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => {
     resetPresence();
     const attachments: Attachment[] = [];
-    const docTexts: string[] = [];
+    const attachedArchiveRefs: string[] = [];
 
     // Process files one by one to avoid browser memory spikes with large Markdown documents
     if (attachedFiles.length > 0) {
       try {
         for (const af of attachedFiles) {
           const url = await uploadToStorage(af.file);
-          let docText: string | undefined;
-          if (af.type === "pdf") {
-            docText = await extractPdfText(af.file);
-          } else if (af.type === "markdown") {
-            docText = await readMarkdownPreview(af.file);
-          } else if (af.type === "json") {
-            const lower = af.file.name.toLowerCase();
-            if (lower.endsWith(".ipynb")) {
-              docText = await extractIpynbText(af.file);
-            } else {
-              const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
-              try {
-                const pretty = JSON.stringify(JSON.parse(raw), null, 2);
-                docText = pretty.length > MAX_DOC_CHARS
-                  ? `${pretty.slice(0, MAX_DOC_CHARS)}\n\n[... JSON trunkerad ...]`
-                  : pretty;
-              } catch {
-                docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
-              }
-            }
-          } else if (af.type === "text") {
-            const raw = await af.file.slice(0, MARKDOWN_READ_BYTES).text();
-            docText = raw.slice(0, MAX_DOC_CHARS) + (raw.length > MAX_DOC_CHARS ? "\n\n[... trunkerat ...]" : "");
+          let indexedDocument: { id: string; title: string; chunk_count: number } | null = null;
+          if (af.type !== "image") {
+            const row = await uploadAndIngest(af.file, { tags: ["chat"], dedupe: false });
+            indexedDocument = { id: row.id, title: row.title, chunk_count: row.chunk_count ?? 0 };
+            attachedArchiveRefs.push(
+              `- ${row.title} | document_id=${row.id} | chunks=${row.chunk_count ?? 0} | type=${af.type}`,
+            );
           }
-          if (docText && docText.length > MAX_DOC_CHARS) {
-            docText = `${docText.slice(0, MAX_DOC_CHARS)}\n\n[... dokument trunkerat för bearbetning ...]`;
-          }
-          attachments.push({ type: af.type, url, name: af.file.name });
-          if (docText) {
-            docTexts.push(`[Bifogat dokument: ${af.file.name}]\n\n${docText}`);
-          }
+          attachments.push({
+            type: af.type,
+            url,
+            name: indexedDocument?.title ?? af.file.name,
+            document_id: indexedDocument?.id,
+            chunk_count: indexedDocument?.chunk_count,
+          });
         }
       } catch (e) {
         console.error("File processing error:", e);
@@ -290,11 +275,11 @@ export default function Index() {
       }
     }
 
-    // Keep extracted document text out of visible/saved chat messages; use it only as AI context.
+    // Keep document bodies out of visible/saved chat messages. The model gets stable archive ids and opens files via tools.
     let aiContent = text;
-    if (docTexts.length > 0) {
+    if (attachedArchiveRefs.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      aiContent = prefix + docTexts.join("\n\n---\n\n");
+      aiContent = `${prefix}[BIFOGADE ARKIVDOKUMENT — öppna med open_archive_file, inte som inklistrad chunk]\n${attachedArchiveRefs.join("\n")}\n[/BIFOGADE ARKIVDOKUMENT]`;
     }
 
     const userMsg: Msg = {
