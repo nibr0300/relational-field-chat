@@ -61,6 +61,22 @@ async function extractText(file: File): Promise<string> {
   // text-ish: read as utf-8 (cap)
   const blob = file.size > MAX_TEXT_BYTES ? file.slice(0, MAX_TEXT_BYTES) : file;
   const raw = await blob.text();
+  if (lower.endsWith(".ipynb")) {
+    // Strip Jupyter notebook to code + markdown cells (no outputs/metadata noise)
+    try {
+      const nb = JSON.parse(raw);
+      const cells = Array.isArray(nb.cells) ? nb.cells : [];
+      const parts: string[] = [];
+      for (const c of cells) {
+        const src = Array.isArray(c.source) ? c.source.join("") : (c.source ?? "");
+        if (!src.trim()) continue;
+        if (c.cell_type === "code") parts.push("```python\n" + src + "\n```");
+        else if (c.cell_type === "markdown") parts.push(src);
+        else parts.push(src);
+      }
+      return parts.join("\n\n");
+    } catch { return raw; }
+  }
   if (lower.endsWith(".json")) {
     try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
   }

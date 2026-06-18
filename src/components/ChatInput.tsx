@@ -55,12 +55,15 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       const isJson =
         file.type === "application/json" ||
         file.type === "text/json" ||
-        lower.endsWith(".json");
+        file.type === "application/x-ipynb+json" ||
+        lower.endsWith(".json") ||
+        lower.endsWith(".ipynb");
       const isText =
         file.type === "text/plain" ||
         lower.endsWith(".txt") ||
         lower.endsWith(".log") ||
-        lower.endsWith(".csv");
+        lower.endsWith(".csv") ||
+        lower.endsWith(".py");
       if (file.type === "application/pdf") {
         newFiles.push({ file, type: "pdf" });
       } else if (isMarkdown) {
@@ -115,7 +118,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,application/pdf,text/markdown,.md,.markdown,.mdx,application/json,.json,text/plain,.txt,.log,.csv"
+            accept="image/*,application/pdf,text/markdown,.md,.markdown,.mdx,application/json,.json,.ipynb,application/x-ipynb+json,text/plain,.txt,.log,.csv,.py"
             multiple
             className="hidden"
             onChange={handleFileChange}
