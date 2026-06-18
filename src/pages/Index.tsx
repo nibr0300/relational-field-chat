@@ -24,12 +24,6 @@ import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
 import { ARCHIVE_OWNER_EMAIL, isArchiveOwnerEmail } from "@/lib/archive-owner";
 import { hardSignOut } from "@/lib/auth-session";
-import {
-  extractMentions,
-  resolveMentions,
-  searchDocuments,
-  formatChunksForContext,
-} from "@/lib/documents-store";
 import { toast } from "sonner";
 
 const WELCOME: Msg = {
@@ -259,31 +253,6 @@ export default function Index() {
     if (docTexts.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
       aiContent = prefix + docTexts.join("\n\n---\n\n");
-    }
-
-    // ─── ARKIV: endast vid explicit @-mention (@filnamn eller @arkiv) ───
-    // Auto-sökning bröt mot Processing-Memory Unity (passiv ström, FZ↑, MSC↓).
-    // Minne ska vara aktiv rekonstruktion — modellen får arkivkontext bara när användaren kallar den.
-    try {
-      if (text.trim().length > 0) {
-        const mentions = extractMentions(text);
-        const hasMention = mentions.all || mentions.tokens.length > 0;
-        if (hasMention) {
-          let docIds: string[] | undefined;
-          const k = mentions.all ? 10 : 8;
-          if (!mentions.all) {
-            const resolved = await resolveMentions(mentions.tokens);
-            docIds = resolved.length ? resolved : undefined;
-          }
-          const matches = await searchDocuments(text, { k, documentIds: docIds });
-          if (matches.length > 0) {
-            const ctx = formatChunksForContext(matches);
-            aiContent = `${ctx}\n\n${aiContent}`;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Arkiv-sökning misslyckades:", e);
     }
 
     const userMsg: Msg = {

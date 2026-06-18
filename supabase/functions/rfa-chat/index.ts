@@ -43,8 +43,11 @@ const AI_CONNECT_TIMEOUT_MS = 180_000;
 const MAX_COMPLETION_TOKENS = 32_768;
 const MAX_CONTINUATION_ROUNDS = 8;
 const MAX_ACCUMULATED_ANSWER_CHARS = 220_000;
+const MAX_TOOL_CALL_ROUNDS = 6;
 const MCP_READ_LIMIT = 10;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const AI_EMBEDDINGS_URL = "https://ai.gateway.lovable.dev/v1/embeddings";
+const EMBED_MODEL = "openai/text-embedding-3-small";
 const encoder = new TextEncoder();
 
 function aiGatewayHeaders(apiKey: string): Record<string, string> {
@@ -214,11 +217,12 @@ You have access to the following tools. Use them when needed:
 
 [ARKIV — DOKUMENTLÄSNING — VIKTIGT, LÄS NOGA]
 Användaren har ett dokumentarkiv (PDF, .ipynb, Markdown, JSON, text) anslutet till konversationen. Åtkomsten fungerar så här:
-- @arkiv, @alla, @all och @filnamn är INTE verktyg som DU anropar. De är triggers i ANVÄNDARENS meddelande. När de finns där kör systemet semantisk sökning automatiskt och injicerar resultatet som ett [ARKIV-KONTEXT]-block ovanför användarens text — innan du ens ser meddelandet.
-- Anropa ALDRIG web_search, document-search eller något annat verktyg för att "hitta" arkivinnehåll. Att skicka "@arkiv ..." som sökfråga till web_search gör absolut ingenting — det är fel verktyg. Sökningen sker utanför din kontroll.
-- Om [ARKIV-KONTEXT] redan finns i prompten: läs det som auktoritativt utdrag ur filerna och svara utifrån det.
-- Om [ARKIV-KONTEXT] saknas men användaren refererar till uppladdat material: be hen lägga till @arkiv (hela arkivet) eller @filnamn (delsträng av filnamn räcker) i nästa meddelande — då aktiveras injektionen automatiskt.
-- Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Lösningen är alltid @-triggern i användarens nästa meddelande.
+- Arkivet nås via dina egna verktyg: list_archive_files, open_archive_file och search_archive. Detta är INTE webben.
+- När användaren skriver @arkiv, @alla eller @all: använd search_archive om uppgiften har en fråga/tema, eller list_archive_files om du först behöver orientera dig.
+- När användaren skriver @filnamn eller nämner en specifik uppladdad fil: använd open_archive_file med filnamnet eller en tydlig delsträng. Om filen är stor, öppna den chunkvis och fortsätt med start_chunk.
+- Anropa ALDRIG web_search för uppladdade filer. web_search är endast för internet.
+- Förutsätt INTE att ett [ARKIV-KONTEXT]-block injiceras automatiskt; textinjektion är störande och ska ersättas av aktiv verktygsbaserad öppning.
+- Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Öppna arkivfilen själv med verktygen.
 
 When you want to use a tool, the system will execute it and return results to you.
 
@@ -248,6 +252,52 @@ const TOOLS = [
         type: "object",
         properties: {
           query: { type: "string", description: "The search query" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_archive_files",
+      description: "List the user's uploaded archive files. Use this to orient in @arkiv before choosing what to open.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Optional filename/title substring to filter by." },
+          limit: { type: "number", description: "Maximum number of files to return, 1-50." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "open_archive_file",
+      description: "Open a specific uploaded archive file by exact title, title substring, or document id. Returns readable chunks from the stored document text.",
+      parameters: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Filename/title substring, such as Copy of Transformers_can_do_anything.ipynb, or a document id." },
+          start_chunk: { type: "number", description: "Zero-based chunk index to start reading from. Use for large files." },
+          chunk_count: { type: "number", description: "How many chunks to read, 1-20." },
+        },
+        required: ["file"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_archive",
+      description: "Semantic search across the user's uploaded archive, optionally constrained to specific file names or ids.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to search for in the archive." },
+          files: { type: "array", items: { type: "string" }, description: "Optional filenames/title substrings or document ids to constrain search." },
+          k: { type: "number", description: "Number of matching chunks to return, 1-20." },
         },
         required: ["query"],
       },
@@ -778,6 +828,140 @@ async function executeWebSearch(query: string): Promise<string> {
   }
 }
 
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+async function resolveArchiveDocuments(fileRefs: unknown, userId?: string | null, limit = 8): Promise<any[]> {
+  if (!userId) return [];
+  const refs = Array.isArray(fileRefs) ? fileRefs : [fileRefs];
+  const docsById = new Map<string, any>();
+
+  for (const raw of refs) {
+    const ref = String(raw ?? "").replace(/^@/, "").trim();
+    if (!ref) continue;
+    let query = supabase
+      .from("documents")
+      .select("id, title, mime_type, size_bytes, char_count, chunk_count, status, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    query = isUuid(ref) ? query.eq("id", ref) : query.ilike("title", `%${escapeLike(ref)}%`);
+    const { data, error } = await query;
+    if (!error && data) {
+      for (const doc of data) docsById.set(doc.id, doc);
+    }
+  }
+  return Array.from(docsById.values()).slice(0, limit);
+}
+
+async function listArchiveFiles(args: any, userId?: string | null): Promise<string> {
+  if (!userId) return "Archive unavailable: missing authenticated user context.";
+  const queryText = String(args?.query ?? "").replace(/^@/, "").trim();
+  const limit = clampInt(args?.limit, 25, 1, 50);
+  let query = supabase
+    .from("documents")
+    .select("id, title, mime_type, size_bytes, char_count, chunk_count, status, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (queryText) query = query.ilike("title", `%${escapeLike(queryText)}%`);
+  const { data, error } = await query;
+  if (error) return `Archive list failed: ${error.message}`;
+  const docs = data ?? [];
+  if (!docs.length) return queryText ? `No archive files matched "${queryText}".` : "No archive files found.";
+  return `[ARKIV-FILER]
+${docs.map((d: any, i: number) => `${i + 1}. ${d.title} | id=${d.id} | status=${d.status} | chunks=${d.chunk_count ?? 0} | chars=${d.char_count ?? 0}`).join("\n")}
+[/ARKIV-FILER]`;
+}
+
+async function openArchiveFile(args: any, userId?: string | null): Promise<string> {
+  if (!userId) return "Archive open failed: missing authenticated user context.";
+  const file = String(args?.file ?? "").trim();
+  if (!file) return "Archive open failed: file name or id required.";
+  const start = clampInt(args?.start_chunk, 0, 0, 100_000);
+  const count = clampInt(args?.chunk_count, 8, 1, 20);
+  const matches = await resolveArchiveDocuments(file, userId, 6);
+  if (!matches.length) return `No archive file matched "${file}". Use list_archive_files to inspect available titles.`;
+  if (matches.length > 1) {
+    return `[ARKIV-FIL — flera möjliga träffar]
+${matches.map((d: any, i: number) => `${i + 1}. ${d.title} | id=${d.id} | chunks=${d.chunk_count ?? 0}`).join("\n")}
+
+Call open_archive_file again with the exact title or id.
+[/ARKIV-FIL]`;
+  }
+
+  const doc = matches[0];
+  const { data, error } = await supabase
+    .from("document_chunks")
+    .select("chunk_index, content, token_estimate")
+    .eq("user_id", userId)
+    .eq("document_id", doc.id)
+    .gte("chunk_index", start)
+    .order("chunk_index", { ascending: true })
+    .limit(count);
+  if (error) return `Archive open failed: ${error.message}`;
+  const chunks = data ?? [];
+  if (!chunks.length) return `Archive file "${doc.title}" is present but has no readable indexed chunks from chunk ${start}. Status=${doc.status}.`;
+  const lastChunk = chunks[chunks.length - 1]?.chunk_index ?? start;
+  const hasMore = Number(doc.chunk_count ?? 0) > lastChunk + 1;
+  return `[ARKIV-FIL ÖPPNAD]
+title: ${doc.title}
+id: ${doc.id}
+chunks: ${start}-${lastChunk} av ${Math.max(0, Number(doc.chunk_count ?? 0) - 1)}${hasMore ? `\nmore: call open_archive_file with start_chunk=${lastChunk + 1}` : ""}
+
+${chunks.map((c: any) => `--- chunk ${c.chunk_index} ---\n${c.content}`).join("\n\n")}
+[/ARKIV-FIL ÖPPNAD]`;
+}
+
+async function embedArchiveQuery(input: string): Promise<number[]> {
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) throw new Error("LOVABLE_API_KEY missing");
+  const resp = await fetchWithTimeout(AI_EMBEDDINGS_URL, {
+    method: "POST",
+    headers: aiGatewayHeaders(key),
+    body: JSON.stringify({ model: EMBED_MODEL, input: input.slice(0, 8000) }),
+  }, 20_000);
+  if (!resp.ok) throw new Error(`embed ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data.data?.[0]?.embedding ?? [];
+}
+
+async function searchArchive(args: any, userId?: string | null): Promise<string> {
+  if (!userId) return "Archive search failed: missing authenticated user context.";
+  const query = String(args?.query ?? "").trim();
+  if (!query) return "Archive search failed: query required.";
+  const k = clampInt(args?.k, 8, 1, 20);
+  const docs = Array.isArray(args?.files) && args.files.length
+    ? await resolveArchiveDocuments(args.files, userId, 20)
+    : [];
+  const embedding = await embedArchiveQuery(query);
+  const { data, error } = await supabase.rpc("match_document_chunks", {
+    query_embedding: embedding as any,
+    match_count: k,
+    filter_user: userId,
+    filter_document_ids: docs.length ? docs.map((d: any) => d.id) : null,
+  });
+  if (error) return `Archive search failed: ${error.message}`;
+  const matches = data ?? [];
+  if (!matches.length) return `No archive matches for "${query}".`;
+  return `[ARKIV-SÖKNING]
+query: ${query}
+${docs.length ? `files: ${docs.map((d: any) => d.title).join(", ")}\n` : ""}
+${matches.map((m: any, i: number) => `[${i + 1}] ${m.title} · chunk ${m.chunk_index} · sim=${Number(m.similarity ?? 0).toFixed(3)}\n${m.content}`).join("\n\n---\n\n")}
+[/ARKIV-SÖKNING]`;
+}
+
 async function executeToolCall(
   toolCall: any,
   conversationId?: string,
@@ -794,6 +978,12 @@ async function executeToolCall(
   let result: string;
   if (name === "web_search") {
     result = await executeWebSearch(args.query);
+  } else if (name === "list_archive_files") {
+    result = await listArchiveFiles(args, userId);
+  } else if (name === "open_archive_file") {
+    result = await openArchiveFile(args, userId);
+  } else if (name === "search_archive") {
+    result = await searchArchive(args, userId);
   } else if (name === "save_eigenstate") {
     result = await saveEigenstate(args.content, args.category, args.significance, conversationId, userId);
   } else if (name === "store_mcp_eigenstate") {
@@ -1988,9 +2178,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        // Up to 3 tool-call rounds
-        for (let round = 0; round < 3; round++) {
-          const isFinalAllowedRound = round === 2;
+        // Multiple tool-call rounds so the model can open large archive files chunkwise before answering.
+        for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
+          const isFinalAllowedRound = round === MAX_TOOL_CALL_ROUNDS - 1;
           const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto");
 
           if (!response.ok || !response.body) {
