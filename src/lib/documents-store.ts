@@ -91,6 +91,19 @@ export async function uploadAndIngest(
   const uid = userData.user?.id;
   if (!uid) throw new Error("Inte inloggad");
 
+  const title = opts.title || file.name;
+
+  // Dedupe: skip if a document with the same title already exists for this user
+  const existing = await supabase
+    .from("documents" as any)
+    .select("*")
+    .eq("title", title)
+    .limit(1)
+    .maybeSingle();
+  if (existing.data) {
+    return existing.data as unknown as DocumentRow;
+  }
+
   const safeName = file.name.replace(/[^\w.\- ]+/g, "_");
   const storagePath = `${uid}/${Date.now()}_${safeName}`;
 
@@ -103,7 +116,7 @@ export async function uploadAndIngest(
 
   // 2) create row
   const insert = await supabase.from("documents" as any).insert({
-    title: opts.title || file.name,
+    title,
     storage_path: storagePath,
     mime_type: file.type || null,
     size_bytes: file.size,
