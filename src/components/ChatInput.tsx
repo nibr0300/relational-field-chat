@@ -8,7 +8,7 @@ interface AttachedFile {
 }
 
 interface ChatInputProps {
-  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => void;
+  onSend: (text: string, files: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => void | Promise<void>;
   disabled?: boolean;
 }
 
@@ -16,16 +16,36 @@ export type { AttachedFile };
 
 const DRAFT_KEY = "rfa:chat-input-draft";
 
+function readDraft() {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(DRAFT_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDraft(value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      localStorage.setItem(DRAFT_KEY, value);
+      sessionStorage.setItem(DRAFT_KEY, value);
+    } else {
+      localStorage.removeItem(DRAFT_KEY);
+      sessionStorage.removeItem(DRAFT_KEY);
+    }
+  } catch { /* ignore storage errors */ }
+}
+
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
-  const [input, setInput] = useState(() => {
-    if (typeof window === "undefined") return "";
-    try { return localStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
-  });
+  const [input, setInput] = useState(readDraft);
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [hat, setHat] = useState(false);
   const [mirror, setMirror] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef(input);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -36,21 +56,39 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   // Persist draft so refresh/reload doesn't lose unsent text
   useEffect(() => {
-    try {
-      if (input) localStorage.setItem(DRAFT_KEY, input);
-      else localStorage.removeItem(DRAFT_KEY);
-    } catch { /* ignore quota */ }
+    inputRef.current = input;
+    writeDraft(input);
   }, [input]);
 
-  const handleSubmit = () => {
+  useEffect(() => {
+    const flushDraft = () => writeDraft(inputRef.current);
+    window.addEventListener("beforeunload", flushDraft);
+    window.addEventListener("pagehide", flushDraft);
+    document.addEventListener("visibilitychange", flushDraft);
+    return () => {
+      flushDraft();
+      window.removeEventListener("beforeunload", flushDraft);
+      window.removeEventListener("pagehide", flushDraft);
+      document.removeEventListener("visibilitychange", flushDraft);
+    };
+  }, []);
+
+  const handleSubmit = async () => {
     const trimmed = input.trim();
     if ((!trimmed && files.length === 0) || disabled) return;
-    onSend(trimmed, files, { hat, mirror });
+    const sentText = input;
+    writeDraft(sentText);
     setInput("");
     setFiles([]);
     setHat(false);
     setMirror(false);
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    try {
+      await onSend(trimmed, files, { hat, mirror });
+      writeDraft("");
+    } catch {
+      setInput(sentText);
+      writeDraft(sentText);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +212,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              inputRef.current = e.target.value;
+              writeDraft(e.target.value);
+              setInput(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
