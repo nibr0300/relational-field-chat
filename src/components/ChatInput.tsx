@@ -14,8 +14,13 @@ interface ChatInputProps {
 
 export type { AttachedFile };
 
+const DRAFT_KEY = "rfa:chat-input-draft";
+
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try { return localStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
+  });
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [hat, setHat] = useState(false);
   const [mirror, setMirror] = useState(false);
@@ -29,6 +34,14 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   }, [input]);
 
+  // Persist draft so refresh/reload doesn't lose unsent text
+  useEffect(() => {
+    try {
+      if (input) localStorage.setItem(DRAFT_KEY, input);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch { /* ignore quota */ }
+  }, [input]);
+
   const handleSubmit = () => {
     const trimmed = input.trim();
     if ((!trimmed && files.length === 0) || disabled) return;
@@ -37,6 +50,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setFiles([]);
     setHat(false);
     setMirror(false);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
