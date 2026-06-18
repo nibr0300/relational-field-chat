@@ -977,6 +977,12 @@ async function executeToolCall(
   let result: string;
   if (name === "web_search") {
     result = await executeWebSearch(args.query);
+  } else if (name === "list_archive_files") {
+    result = await listArchiveFiles(args, userId);
+  } else if (name === "open_archive_file") {
+    result = await openArchiveFile(args, userId);
+  } else if (name === "search_archive") {
+    result = await searchArchive(args, userId);
   } else if (name === "save_eigenstate") {
     result = await saveEigenstate(args.content, args.category, args.significance, conversationId, userId);
   } else if (name === "store_mcp_eigenstate") {
