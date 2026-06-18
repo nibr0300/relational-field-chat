@@ -33,8 +33,8 @@ export function DocumentsPanel({ isOpen, onClose }: { isOpen: boolean; onClose: 
       const rel = (f as any).webkitRelativePath || f.name;
       if (rel.split("/").some((p: string) => p.startsWith("."))) return false;
       const lower = f.name.toLowerCase();
-      const allowed = /\.(pdf|txt|md|markdown|mdx|json|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/;
-      return allowed.test(lower) || f.type.startsWith("text/") || f.type === "application/pdf" || f.type === "application/json";
+      const allowed = /\.(pdf|txt|md|markdown|mdx|json|ipynb|csv|log|ya?ml|html?|xml|tsx?|jsx?|py|rs|go|java|rb|php|c|cc|cpp|h|hpp|cs|swift|kt|sql|sh|toml|ini|conf|env)$/;
+      return allowed.test(lower) || f.type.startsWith("text/") || f.type === "application/pdf" || f.type === "application/json" || f.type === "application/x-ipynb+json";
     });
     if (files.length === 0) return;
     if (files.length > 50 && !confirm(`Du är på väg att ladda upp ${files.length} filer. Fortsätta?`)) return;
@@ -97,7 +97,7 @@ export function DocumentsPanel({ isOpen, onClose }: { isOpen: boolean; onClose: 
             ref={fileRef}
             type="file"
             multiple
-            accept=".pdf,application/pdf,.txt,.md,.markdown,.mdx,.json,.csv,.log,.yaml,.yml,.html,.xml,text/*"
+            accept=".pdf,application/pdf,.txt,.md,.markdown,.mdx,.json,.ipynb,application/x-ipynb+json,.csv,.log,.yaml,.yml,.html,.xml,.py,text/*"
             className="hidden"
             onChange={handleUpload}
           />
