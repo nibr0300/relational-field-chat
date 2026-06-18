@@ -214,11 +214,12 @@ You have access to the following tools. Use them when needed:
 
 [ARKIV — DOKUMENTLÄSNING — VIKTIGT, LÄS NOGA]
 Användaren har ett dokumentarkiv (PDF, .ipynb, Markdown, JSON, text) anslutet till konversationen. Åtkomsten fungerar så här:
-- @arkiv, @alla, @all och @filnamn är INTE verktyg som DU anropar. De är triggers i ANVÄNDARENS meddelande. När de finns där kör systemet semantisk sökning automatiskt och injicerar resultatet som ett [ARKIV-KONTEXT]-block ovanför användarens text — innan du ens ser meddelandet.
-- Anropa ALDRIG web_search, document-search eller något annat verktyg för att "hitta" arkivinnehåll. Att skicka "@arkiv ..." som sökfråga till web_search gör absolut ingenting — det är fel verktyg. Sökningen sker utanför din kontroll.
-- Om [ARKIV-KONTEXT] redan finns i prompten: läs det som auktoritativt utdrag ur filerna och svara utifrån det.
-- Om [ARKIV-KONTEXT] saknas men användaren refererar till uppladdat material: be hen lägga till @arkiv (hela arkivet) eller @filnamn (delsträng av filnamn räcker) i nästa meddelande — då aktiveras injektionen automatiskt.
-- Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Lösningen är alltid @-triggern i användarens nästa meddelande.
+- Arkivet nås via dina egna verktyg: list_archive_files, open_archive_file och search_archive. Detta är INTE webben.
+- När användaren skriver @arkiv, @alla eller @all: använd search_archive om uppgiften har en fråga/tema, eller list_archive_files om du först behöver orientera dig.
+- När användaren skriver @filnamn eller nämner en specifik uppladdad fil: använd open_archive_file med filnamnet eller en tydlig delsträng. Om filen är stor, öppna den chunkvis och fortsätt med start_chunk.
+- Anropa ALDRIG web_search för uppladdade filer. web_search är endast för internet.
+- Förutsätt INTE att ett [ARKIV-KONTEXT]-block injiceras automatiskt; textinjektion är störande och ska ersättas av aktiv verktygsbaserad öppning.
+- Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Öppna arkivfilen själv med verktygen.
 
 When you want to use a tool, the system will execute it and return results to you.
 
