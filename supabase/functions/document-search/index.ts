@@ -33,7 +33,7 @@ async function embedOne(input: string): Promise<number[]> {
   if (!key) throw new Error("LOVABLE_API_KEY missing");
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { "Lovable-API-Key": key, "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input }),
   });
   if (!resp.ok) throw new Error(`embed ${resp.status}: ${await resp.text()}`);
