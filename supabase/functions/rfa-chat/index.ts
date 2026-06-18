@@ -257,6 +257,52 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "list_archive_files",
+      description: "List the user's uploaded archive files. Use this to orient in @arkiv before choosing what to open.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Optional filename/title substring to filter by." },
+          limit: { type: "number", description: "Maximum number of files to return, 1-50." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "open_archive_file",
+      description: "Open a specific uploaded archive file by exact title, title substring, or document id. Returns readable chunks from the stored document text.",
+      parameters: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Filename/title substring, such as Copy of Transformers_can_do_anything.ipynb, or a document id." },
+          start_chunk: { type: "number", description: "Zero-based chunk index to start reading from. Use for large files." },
+          chunk_count: { type: "number", description: "How many chunks to read, 1-20." },
+        },
+        required: ["file"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_archive",
+      description: "Semantic search across the user's uploaded archive, optionally constrained to specific file names or ids.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to search for in the archive." },
+          files: { type: "array", items: { type: "string" }, description: "Optional filenames/title substrings or document ids to constrain search." },
+          k: { type: "number", description: "Number of matching chunks to return, 1-20." },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "save_eigenstate",
       description: "Save a fresh but still temporary insight to CORONA. Use only for notable recent observations; MCP anchoring is handled by store_mcp_eigenstate when thresholds are met.",
       parameters: {
