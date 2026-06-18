@@ -43,6 +43,7 @@ const AI_CONNECT_TIMEOUT_MS = 180_000;
 const MAX_COMPLETION_TOKENS = 32_768;
 const MAX_CONTINUATION_ROUNDS = 8;
 const MAX_ACCUMULATED_ANSWER_CHARS = 220_000;
+const MAX_TOOL_CALL_ROUNDS = 6;
 const MCP_READ_LIMIT = 10;
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const AI_EMBEDDINGS_URL = "https://ai.gateway.lovable.dev/v1/embeddings";
@@ -2177,9 +2178,9 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         }
         // ───────────────────────────────────────────────────
 
-        // Up to 3 tool-call rounds
-        for (let round = 0; round < 3; round++) {
-          const isFinalAllowedRound = round === 2;
+        // Multiple tool-call rounds so the model can open large archive files chunkwise before answering.
+        for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
+          const isFinalAllowedRound = round === MAX_TOOL_CALL_ROUNDS - 1;
           const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto");
 
           if (!response.ok || !response.body) {
