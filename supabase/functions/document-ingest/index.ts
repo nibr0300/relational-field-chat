@@ -21,7 +21,7 @@ const supabaseAnon = createClient(
 const EMBED_MODEL = "openai/text-embedding-3-small"; // 1536 dims
 const CHUNK_TARGET = 1100; // chars
 const CHUNK_OVERLAP = 150;
-const MAX_CHUNKS = 400;
+const MAX_CHUNKS = 1200;
 const BATCH = 32;
 
 async function getUserId(req: Request): Promise<string | null> {
