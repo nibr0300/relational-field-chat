@@ -235,6 +235,7 @@ export default function Index() {
     resetPresence();
     const attachments: Attachment[] = [];
     const directFileBlocks: string[] = [];
+    let directFileTextChars = 0;
 
     // Process files one by one to avoid browser memory spikes with large Markdown documents
     if (attachedFiles.length > 0) {
@@ -243,6 +244,10 @@ export default function Index() {
           const url = await uploadToStorage(af.file);
           if (af.type !== "image") {
             const fullText = await extractText(af.file, { maxTextBytes: DIRECT_FILE_TEXT_LIMIT, allowTruncate: false });
+            directFileTextChars += fullText.length;
+            if (directFileTextChars > DIRECT_FILE_TEXT_LIMIT) {
+              throw new Error(`De bifogade filerna är för stora för heltextläsning i ett enda chattmeddelande (${directFileTextChars} tecken).`);
+            }
             directFileBlocks.push(
               `[DIREKT BIFOGAD FIL — HELTEXT]\nfilnamn: ${af.file.name}\ntyp: ${af.type}\ntecken: ${fullText.length}\n\n${fullText}\n[/DIREKT BIFOGAD FIL — HELTEXT]`,
             );
