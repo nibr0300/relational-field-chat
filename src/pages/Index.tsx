@@ -312,9 +312,14 @@ export default function Index() {
 
     // ─── TÄNKAR-HATTEN (RAAP) ───────────────────────────────────
     const auto = shouldWearHat(text);
-    const wearHat = opts.hat || auto.wear;
+    const directFileTurn = directFileBlocks.length > 0;
+    const wearHat = !directFileTurn && (opts.hat || auto.wear);
     const triggerType: "manual" | "auto" = opts.hat ? "manual" : "auto";
     const triggerReason = opts.hat ? "användaren aktiverade hatten" : auto.reason;
+
+    if (directFileTurn && opts.hat) {
+      toast.message("Tänkar-hatten hoppas över för direkt bifogad heltext så filen inte kortas ned.");
+    }
 
     if (wearHat) {
       try {
