@@ -2286,18 +2286,32 @@ async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"):
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-  return await fetchWithTimeout(AI_GATEWAY_URL, {
-    method: "POST",
-    headers: aiGatewayHeaders(LOVABLE_API_KEY),
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages,
-      stream: true,
-      max_tokens: MAX_COMPLETION_TOKENS,
-      tools: TOOLS,
-      tool_choice: toolChoice,
-    }),
-  }, AI_CONNECT_TIMEOUT_MS);
+  const body = JSON.stringify({
+    model: "google/gemini-2.5-flash",
+    messages,
+    stream: true,
+    max_tokens: MAX_COMPLETION_TOKENS,
+    tools: TOOLS,
+    tool_choice: toolChoice,
+  });
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetchWithTimeout(AI_GATEWAY_URL, {
+        method: "POST",
+        headers: aiGatewayHeaders(LOVABLE_API_KEY),
+        body,
+      }, AI_CONNECT_TIMEOUT_MS);
+      if (!isRetryableGatewayStatus(response.status) || attempt === 2) return response;
+      try { await response.body?.cancel(); } catch {}
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw error;
+    }
+    await sleep(700 * (attempt + 1));
+  }
+  throw lastError instanceof Error ? lastError : new Error("AI gateway request failed");
 }
 
 serve(async (req) => {
