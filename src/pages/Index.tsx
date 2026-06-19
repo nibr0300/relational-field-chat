@@ -223,7 +223,7 @@ export default function Index() {
       } catch (e) {
         console.error("File processing error:", e);
         toast.error("Kunde inte bearbeta bifogade filer");
-        return;
+        throw e;
       }
     }
 
@@ -254,7 +254,7 @@ export default function Index() {
       } catch {
         toast.error("Kunde inte skapa konversation");
         setIsLoading(false);
-        return;
+        throw new Error("Kunde inte skapa konversation");
       }
     }
 
@@ -331,6 +331,7 @@ export default function Index() {
     };
 
     let mirrorMeta: { rounds: number; reviewer: string; ms: number } | null = null;
+    let streamFailed: string | null = null;
     try {
       await streamChat({
         messages: allMessages,
@@ -361,13 +362,16 @@ export default function Index() {
           }
         },
         onError: (err) => {
+          streamFailed = err;
           toast.error(err);
           setIsLoading(false);
         },
       });
+      if (streamFailed) throw new Error(streamFailed);
     } catch {
       toast.error("Kunde inte ansluta till RFA.");
       setIsLoading(false);
+      throw new Error("Kunde inte ansluta till RFA.");
     }
   };
 
