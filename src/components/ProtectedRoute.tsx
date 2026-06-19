@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { isArchiveOwnerEmail, ownerMismatchMessage } from "@/lib/archive-owner";
-import { hardSignOut } from "@/lib/auth-session";
+import { hardSignOut, hasStoredAuthSession } from "@/lib/auth-session";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -13,7 +13,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
     const acceptSession = async (s: Session | null) => {
       if (!s) {
-        if (!cancelled) setSession(null);
+        if (!cancelled && !hasStoredAuthSession()) setSession(null);
         return;
       }
 
