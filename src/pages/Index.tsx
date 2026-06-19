@@ -129,10 +129,13 @@ export default function Index() {
           setActiveConvId(savedConversationId);
           try {
             const msgs = await loadMessages(savedConversationId);
-            if (!cancelled) setMessages(msgs.length > 0 ? msgs : [WELCOME]);
+            const checkpoint = readMessageCheckpoint(savedConversationId);
+            if (!cancelled) setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
           } catch (err) {
             console.error("Kunde inte återställa aktiv konversation:", err);
-            localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
+            const checkpoint = readMessageCheckpoint(savedConversationId);
+            if (!cancelled && checkpoint) setMessages(checkpoint);
+            else localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
           }
         }
       }
@@ -185,9 +188,12 @@ export default function Index() {
     setSidebarOpen(false);
     try {
       const msgs = await loadMessages(id);
-      setMessages(msgs.length > 0 ? msgs : [WELCOME]);
+      const checkpoint = readMessageCheckpoint(id);
+      setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
     } catch {
-      toast.error("Kunde inte ladda konversation");
+      const checkpoint = readMessageCheckpoint(id);
+      if (checkpoint) setMessages(checkpoint);
+      toast.error(checkpoint ? "Visar lokal checkpoint medan historiken laddar fel" : "Kunde inte ladda konversation");
     }
   }, []);
 
