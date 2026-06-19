@@ -1017,6 +1017,11 @@ function contentLength(content: unknown): number {
 }
 
 function capContent(content: unknown): unknown {
+  if (typeof content === "string" && content.includes(DIRECT_FILE_MARKER)) {
+    return content.length > MAX_DIRECT_FILE_MESSAGE_CHARS
+      ? content.slice(0, MAX_DIRECT_FILE_MESSAGE_CHARS) + "\n\n[... direkt bifogad filtext överskred säker heltextbudget ...]"
+      : content;
+  }
   if (typeof content === "string" && content.length > MAX_MESSAGE_CHARS) {
     return content.slice(0, MAX_MESSAGE_CHARS) + "\n\n[... content truncated for runtime stability ...]";
   }
@@ -1035,7 +1040,11 @@ function capContent(content: unknown): unknown {
 
 function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   // First, hard-cap each individual message to avoid single huge PDF blobs
-  const capped = messages.map((msg) => ({ ...msg, content: capContent(msg.content) }));
+  const capped = messages.map((msg, index) => {
+    const isLatest = index === messages.length - 1;
+    const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
+    return { ...msg, content: isDirectFileTurn ? capContent(msg.content) : capContent(msg.content) };
+  });
 
   // Then keep the most recent messages within total budget
   const result: any[] = [];
@@ -1043,8 +1052,11 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   for (let i = capped.length - 1; i >= 0; i--) {
     const msg = capped[i];
     const len = contentLength(msg.content);
+    const isLatest = i === capped.length - 1;
+    const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
     if (result.length >= MAX_CONTEXT_MESSAGES) break;
-    if (totalChars + len > maxChars && result.length >= 1) continue;
+    const budget = isDirectFileTurn ? MAX_DIRECT_FILE_TOTAL_CHARS : maxChars;
+    if (!isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
     result.unshift(msg);
     totalChars += len;
   }
