@@ -170,7 +170,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         lower.endsWith(".log") ||
         lower.endsWith(".csv") ||
         lower.endsWith(".py");
-      if (file.type === "application/pdf") {
+      if (file.type === "application/pdf" || lower.endsWith(".pdf")) {
         newFiles.push({ file, type: "pdf" });
       } else if (isMarkdown) {
         newFiles.push({ file, type: "markdown" });

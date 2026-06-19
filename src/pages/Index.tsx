@@ -18,7 +18,7 @@ import {
   uploadToStorage,
   type Conversation,
 } from "@/lib/conversation-store";
-import { uploadAndIngest } from "@/lib/documents-store";
+import { extractText } from "@/lib/documents-store";
 import { DocumentsPanel } from "@/components/DocumentsPanel";
 import { DrivePanel } from "@/components/DrivePanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +34,7 @@ const WELCOME: Msg = {
 
 const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
 const MESSAGE_CHECKPOINT_KEY = "rfa-visible-message-checkpoint";
+const DIRECT_FILE_TEXT_LIMIT = 180_000;
 
 type MessageCheckpoint = { conversationId: string; updatedAt: number; messages: Msg[] };
 
@@ -233,41 +234,42 @@ export default function Index() {
   const handleSend = async (text: string, attachedFiles: AttachedFile[], opts: { hat: boolean; mirror: boolean }) => {
     resetPresence();
     const attachments: Attachment[] = [];
-    const attachedArchiveRefs: string[] = [];
+    const directFileBlocks: string[] = [];
+    let directFileTextChars = 0;
 
     // Process files one by one to avoid browser memory spikes with large Markdown documents
     if (attachedFiles.length > 0) {
       try {
         for (const af of attachedFiles) {
           const url = await uploadToStorage(af.file);
-          let indexedDocument: { id: string; title: string; chunk_count: number } | null = null;
           if (af.type !== "image") {
-            const row = await uploadAndIngest(af.file, { tags: ["chat"], dedupe: false });
-            indexedDocument = { id: row.id, title: row.title, chunk_count: row.chunk_count ?? 0 };
-            attachedArchiveRefs.push(
-              `- ${row.title} | document_id=${row.id} | chunks=${row.chunk_count ?? 0} | type=${af.type}`,
+            const fullText = await extractText(af.file, { maxTextBytes: DIRECT_FILE_TEXT_LIMIT, allowTruncate: false });
+            directFileTextChars += fullText.length;
+            if (directFileTextChars > DIRECT_FILE_TEXT_LIMIT) {
+              throw new Error(`De bifogade filerna är för stora för heltextläsning i ett enda chattmeddelande (${directFileTextChars} tecken).`);
+            }
+            directFileBlocks.push(
+              `[DIREKT BIFOGAD FIL — HELTEXT]\nfilnamn: ${af.file.name}\ntyp: ${af.type}\ntecken: ${fullText.length}\n\n${fullText}\n[/DIREKT BIFOGAD FIL — HELTEXT]`,
             );
           }
           attachments.push({
             type: af.type,
             url,
-            name: indexedDocument?.title ?? af.file.name,
-            document_id: indexedDocument?.id,
-            chunk_count: indexedDocument?.chunk_count,
+            name: af.file.name,
           });
         }
       } catch (e) {
         console.error("File processing error:", e);
-        toast.error("Kunde inte bearbeta bifogade filer");
+        toast.error(e instanceof Error ? e.message : "Kunde inte läsa bifogade filer som heltext");
         throw e;
       }
     }
 
-    // Keep document bodies out of visible/saved chat messages. The model gets stable archive ids and opens files via tools.
+    // Direkt bifogade filer ska läsas som heltext av modellen, inte chunkas via arkivet/RAG.
     let aiContent = text;
-    if (attachedArchiveRefs.length > 0) {
+    if (directFileBlocks.length > 0) {
       const prefix = text ? `${text}\n\n` : "";
-      aiContent = `${prefix}[BIFOGADE ARKIVDOKUMENT — öppna med open_archive_file, inte som inklistrad chunk]\n${attachedArchiveRefs.join("\n")}\n[/BIFOGADE ARKIVDOKUMENT]`;
+      aiContent = `${prefix}${directFileBlocks.join("\n\n")}`;
     }
 
     const userMsg: Msg = {
@@ -310,9 +312,14 @@ export default function Index() {
 
     // ─── TÄNKAR-HATTEN (RAAP) ───────────────────────────────────
     const auto = shouldWearHat(text);
-    const wearHat = opts.hat || auto.wear;
+    const directFileTurn = directFileBlocks.length > 0;
+    const wearHat = !directFileTurn && (opts.hat || auto.wear);
     const triggerType: "manual" | "auto" = opts.hat ? "manual" : "auto";
     const triggerReason = opts.hat ? "användaren aktiverade hatten" : auto.reason;
+
+    if (directFileTurn && opts.hat) {
+      toast.message("Tänkar-hatten hoppas över för direkt bifogad heltext så filen inte kortas ned.");
+    }
 
     if (wearHat) {
       try {

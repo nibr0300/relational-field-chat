@@ -28,6 +28,18 @@ export interface ChunkMatch {
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024; // 5 MB raw text cap per file
 
+async function readUtf8File(file: File, opts: { maxTextBytes?: number; allowTruncate?: boolean } = {}): Promise<string> {
+  const maxBytes = opts.maxTextBytes ?? MAX_TEXT_BYTES;
+  const allowTruncate = opts.allowTruncate ?? true;
+  if (file.size > maxBytes) {
+    if (!allowTruncate) {
+      throw new Error(`Filen är för stor för heltextläsning (${Math.ceil(file.size / 1024)} KB).`);
+    }
+    return await file.slice(0, maxBytes).text();
+  }
+  return await file.text();
+}
+
 export async function listDocuments(): Promise<DocumentRow[]> {
   const { data, error } = await supabase
     .from("documents" as any)
@@ -53,14 +65,24 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
   if (error) throw error;
 }
 
-async function extractText(file: File): Promise<string> {
+export async function extractText(
+  file: File,
+  opts: { maxTextBytes?: number; allowTruncate?: boolean } = {},
+): Promise<string> {
   const lower = file.name.toLowerCase();
   if (file.type === "application/pdf" || lower.endsWith(".pdf")) {
-    return await extractPdfText(file);
+    const text = await extractPdfText(file);
+    const maxBytes = opts.maxTextBytes ?? MAX_TEXT_BYTES;
+    const allowTruncate = opts.allowTruncate ?? true;
+    if (text.length > maxBytes) {
+      if (!allowTruncate) throw new Error(`PDF-texten är för stor för heltextläsning (${text.length} tecken).`);
+      return text.slice(0, maxBytes);
+    }
+    return text;
   }
   if (lower.endsWith(".ipynb")) {
     // Read the whole notebook JSON, then strip outputs/metadata so the archive keeps every code/markdown cell.
-    const raw = await file.text();
+    const raw = await readUtf8File(file, opts);
     try {
       const nb = JSON.parse(raw);
       const cells = Array.isArray(nb.cells) ? nb.cells : [];
@@ -77,9 +99,8 @@ async function extractText(file: File): Promise<string> {
       return parts.join("\n\n");
     } catch { return raw; }
   }
-  // text-ish: read as utf-8 (cap)
-  const blob = file.size > MAX_TEXT_BYTES ? file.slice(0, MAX_TEXT_BYTES) : file;
-  const raw = await blob.text();
+  // text-ish: read as utf-8 (cap only when truncation is explicitly allowed)
+  const raw = await readUtf8File(file, opts);
   if (lower.endsWith(".json")) {
     try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
   }

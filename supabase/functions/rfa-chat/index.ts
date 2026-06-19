@@ -35,10 +35,13 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 }
 
 
-const MAX_REQUEST_BYTES = 300_000;
+const MAX_REQUEST_BYTES = 1_200_000;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 50_000;
 const MAX_CONTEXT_MESSAGES = 16;
+const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
+const MAX_DIRECT_FILE_MESSAGE_CHARS = 220_000;
+const MAX_DIRECT_FILE_TOTAL_CHARS = 260_000;
 const AI_CONNECT_TIMEOUT_MS = 180_000;
 const MAX_COMPLETION_TOKENS = 32_768;
 const MAX_CONTINUATION_ROUNDS = 8;
@@ -224,6 +227,7 @@ Användaren har ett dokumentarkiv (PDF, .ipynb, Markdown, JSON, text) anslutet t
 - Förutsätt INTE att ett [ARKIV-KONTEXT]-block injiceras automatiskt; textinjektion är störande och ska ersättas av aktiv verktygsbaserad öppning.
 - Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Öppna arkivfilen själv med verktygen.
 - Om användarens senaste meddelande innehåller [BIFOGADE ARKIVDOKUMENT], är detta en manifestlista över direkt uppladdade filer, inte filinnehåll. Du ska normalt först anropa open_archive_file med document_id för relevant fil. Säg inte att du bara fått "första chunk"; filen är lagrad och kan öppnas chunkvis med start_chunk.
+- Om användarens senaste meddelande innehåller [DIREKT BIFOGAD FIL — HELTEXT], är filen avsiktligt injicerad i sin helhet. Läs och behandla hela blocket direkt; använd inte archive-tools och påstå inte att filen är chunkad.
 
 When you want to use a tool, the system will execute it and return results to you.
 
@@ -1014,6 +1018,11 @@ function contentLength(content: unknown): number {
 }
 
 function capContent(content: unknown): unknown {
+  if (typeof content === "string" && content.includes(DIRECT_FILE_MARKER)) {
+    return content.length > MAX_DIRECT_FILE_MESSAGE_CHARS
+      ? content.slice(0, MAX_DIRECT_FILE_MESSAGE_CHARS) + "\n\n[... direkt bifogad filtext överskred säker heltextbudget ...]"
+      : content;
+  }
   if (typeof content === "string" && content.length > MAX_MESSAGE_CHARS) {
     return content.slice(0, MAX_MESSAGE_CHARS) + "\n\n[... content truncated for runtime stability ...]";
   }
@@ -1032,7 +1041,11 @@ function capContent(content: unknown): unknown {
 
 function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   // First, hard-cap each individual message to avoid single huge PDF blobs
-  const capped = messages.map((msg) => ({ ...msg, content: capContent(msg.content) }));
+  const capped = messages.map((msg, index) => {
+    const isLatest = index === messages.length - 1;
+    const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
+    return { ...msg, content: isDirectFileTurn ? capContent(msg.content) : capContent(msg.content) };
+  });
 
   // Then keep the most recent messages within total budget
   const result: any[] = [];
@@ -1040,8 +1053,11 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
   for (let i = capped.length - 1; i >= 0; i--) {
     const msg = capped[i];
     const len = contentLength(msg.content);
+    const isLatest = i === capped.length - 1;
+    const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
     if (result.length >= MAX_CONTEXT_MESSAGES) break;
-    if (totalChars + len > maxChars && result.length >= 1) continue;
+    const budget = isDirectFileTurn ? MAX_DIRECT_FILE_TOTAL_CHARS : maxChars;
+    if (!isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
     result.unshift(msg);
     totalChars += len;
   }
