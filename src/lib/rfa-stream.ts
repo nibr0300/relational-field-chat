@@ -53,6 +53,12 @@ export interface PrmMeta {
   prospective?: ProspectiveMeta | null;
 }
 
+export interface StreamStatusMeta {
+  kind: "continuation" | "recovered";
+  round?: number;
+  message?: string;
+}
+
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 20_000;
 const MAX_TOTAL_CHARS = 80_000;
@@ -124,6 +130,7 @@ export async function streamChat({
   onError,
   onMirrorMeta,
   onPrmSignal,
+  onStatus,
 }: {
   messages: Msg[];
   conversationId?: string;
@@ -133,6 +140,7 @@ export async function streamChat({
   onError: (error: string) => void;
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
   onPrmSignal?: (signal: PrmMeta) => void;
+  onStatus?: (meta: StreamStatusMeta) => void;
 }) {
   // Build messages for the API, including image content
   const apiMessages = compactForTransport(messages.map((m) => {
@@ -225,6 +233,10 @@ export async function streamChat({
           onPrmSignal(parsed.prm_meta);
           continue;
         }
+        if (parsed.status_meta && onStatus) {
+          onStatus(parsed.status_meta);
+          continue;
+        }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {
@@ -245,6 +257,7 @@ export async function streamChat({
         const parsed = JSON.parse(json);
         if (parsed.mirror_meta && onMirrorMeta) { onMirrorMeta(parsed.mirror_meta); continue; }
         if (parsed.prm_meta && onPrmSignal) { onPrmSignal(parsed.prm_meta); continue; }
+        if (parsed.status_meta && onStatus) { onStatus(parsed.status_meta); continue; }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
         if (content) onDelta(content);
       } catch {}
