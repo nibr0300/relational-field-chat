@@ -33,7 +33,15 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
         void acceptSession(s);
       }, 0);
     });
-    supabase.auth.getSession().then(({ data }) => void acceptSession(data.session));
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn("Tillfälligt sessionsfel, behåller laddningsläge:", error.message);
+          return;
+        }
+        void acceptSession(data.session);
+      })
+      .catch((error) => console.warn("Tillfälligt sessionsfel, behåller laddningsläge:", error));
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
