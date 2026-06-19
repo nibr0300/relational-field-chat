@@ -6,6 +6,8 @@ export interface Attachment {
   name: string;
   document_id?: string;
   chunk_count?: number;
+  full_text?: string;
+  truncated?: boolean;
 }
 
 export type Msg = {
@@ -63,8 +65,10 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 20_000;
 const MAX_TOTAL_CHARS = 80_000;
 const MAX_CONTEXT_MESSAGES = 20;
+const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
 
 function capText(text: string): string {
+  if (text.includes(DIRECT_FILE_MARKER)) return text;
   if (text.length <= MAX_MESSAGE_CHARS) return text;
   return `${text.slice(0, MAX_MESSAGE_CHARS)}\n\n[... äldre innehåll trunkerat för stabil körning ...]`;
 }
@@ -105,7 +109,11 @@ function capMessage(message: any): any {
 }
 
 function compactForTransport(messages: any[]): any[] {
-  const capped = messages.map(capMessage).filter((m) => messageSize(m) > 0);
+  const capped = messages.map((msg, index) => (
+    index === messages.length - 1 && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER)
+      ? msg
+      : capMessage(msg)
+  )).filter((m) => messageSize(m) > 0);
   const selected: any[] = [];
   let total = 0;
 
@@ -113,7 +121,9 @@ function compactForTransport(messages: any[]): any[] {
     const msg = capped[i];
     const len = messageSize(msg);
     if (selected.length >= MAX_CONTEXT_MESSAGES) break;
-    if (selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
+    const isLatest = i === capped.length - 1;
+    const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
+    if (!isDirectFileTurn && selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
     selected.unshift(msg);
     total += len;
   }
