@@ -106,7 +106,8 @@ export default function Index() {
       const { data, error } = await supabase.auth.getUser();
       if (cancelled) return;
       if (error || !data.user) {
-        window.location.href = "/auth";
+        console.warn("Tillfälligt auth-glitch vid historikladdning:", error?.message ?? "ingen användare");
+        setAuthWarning("Backend-sessionen kunde inte bekräftas just nu. Jag behåller chatten lokalt i stället för att ladda om sidan.");
         return;
       }
 
