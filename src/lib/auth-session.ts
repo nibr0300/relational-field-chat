@@ -10,6 +10,14 @@ export function clearStoredAuthSession() {
   }
 }
 
+export function hasStoredAuthSession() {
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(SUPABASE_AUTH_KEY_PREFIX) && key.endsWith(SUPABASE_AUTH_KEY_SUFFIX)) return true;
+  }
+  return false;
+}
+
 export async function hardSignOut(signOut: () => Promise<unknown>) {
   try {
     await signOut();
