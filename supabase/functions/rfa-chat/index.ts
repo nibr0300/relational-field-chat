@@ -1061,6 +1061,14 @@ function isLengthFinish(reason: string | null): boolean {
   return value === "length" || value === "max_tokens" || value === "max_output_tokens" || value === "max_tokens_reached";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableGatewayStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 function createErrorStream(message: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
@@ -2202,6 +2210,13 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
             conversation.push({ role: "assistant", content });
             for (let continuation = 0; continuation < MAX_CONTINUATION_ROUNDS; continuation++) {
               if (accumulatedAnswerChars >= MAX_ACCUMULATED_ANSWER_CHARS) break;
+              controller.enqueue(sseJson({
+                status_meta: {
+                  kind: "continuation",
+                  round: continuation + 1,
+                  message: "Svaret nådde tokenbudget och fortsätter automatiskt från sista raden.",
+                },
+              }));
               conversation.push({
                 role: "user",
                 content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade. Börja inte om. Upprepa inte redan skriven text. Slutför den pågående sektionen och avsluta helheten komplett.]",
@@ -2211,7 +2226,10 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               const continuationResult = await consumeStream(continuationResponse, controller, true);
               accumulatedAnswerChars += continuationResult.content.length;
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
-              if (!isLengthFinish(continuationResult.finishReason)) break;
+              if (!isLengthFinish(continuationResult.finishReason)) {
+                controller.enqueue(sseJson({ status_meta: { kind: "recovered", message: "Svaret slutfördes efter automatisk fortsättning." } }));
+                break;
+              }
             }
             await maybePersistMcpAfterFrame(userTurnText, conversation.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : ""}`).join("\n").slice(-6000), content, conversationId, userId);
 
