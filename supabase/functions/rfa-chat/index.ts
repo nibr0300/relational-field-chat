@@ -35,7 +35,7 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 }
 
 
-const MAX_REQUEST_BYTES = 1_200_000;
+const MAX_REQUEST_BYTES = 4_000_000;
 const MAX_MESSAGE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 50_000;
 const MAX_CONTEXT_MESSAGES = 16;
