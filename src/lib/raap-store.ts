@@ -61,11 +61,16 @@ export async function invokeRaap(params: {
     body: JSON.stringify(params),
   });
 
+  const data = await resp.json().catch(() => ({}));
+
+  if (data?.fallback === true) {
+    throw new Error(`RAAP_FALLBACK:${data.error || "Tänkar-hatten föll tillbaka till standardflöde"}`);
+  }
+
   if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
     throw new Error(data.error || `RAAP error ${resp.status}`);
   }
-  return resp.json();
+  return data;
 }
 
 export async function getRun(runId: string): Promise<RaapRun | null> {
@@ -87,7 +92,6 @@ export function shouldWearHat(text: string): { wear: boolean; reason: string } {
   const t = text.toLowerCase();
   const length = text.length;
   const triggers: Array<[RegExp | boolean, string]> = [
-    [length > 800, "lång och komplex förfrågan"],
     [/\b(planera|strategi|arkitektur|design|jämför|utvärdera|analysera djupt|bevisa|härled|optimera|felsök komplext)\b/.test(t), "kräver strukturerad planering"],
     [/\b(steg för steg|i flera steg|multi-step|flerstegs)\b/.test(t), "explicit flerstegsproblem"],
     [/\b(varför|hur kommer det sig|orsakssamband|implikation)\b/.test(t) && length > 300, "djupare orsaksanalys"],
