@@ -27,8 +27,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
       if (!cancelled) setSession(s);
     };
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       window.setTimeout(() => {
+        if (!s && event !== "SIGNED_OUT") return;
         void acceptSession(s);
       }, 0);
     });
