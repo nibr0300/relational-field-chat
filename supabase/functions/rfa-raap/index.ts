@@ -385,8 +385,11 @@ Var konkret. Visa resonemang där det hjälper. Avsluta med tydligt huvudbudskap
         completed_at: new Date().toISOString(),
       }).eq("id", runId);
     }
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "RAAP failed" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      fallback: true,
+      error: "Tänkar-hatten kunde inte nå AI-gatewayen stabilt; standardchatten tar över utan att förlora meddelandet.",
+    }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
