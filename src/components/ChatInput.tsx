@@ -20,16 +20,21 @@ const DRAFT_KEY = "rfa:chat-input-draft";
 const LAST_SENT_DRAFT_KEY = "rfa:chat-input-last-sent";
 const MEMORY_DRAFT_KEY = "__rfaChatInputDraft";
 const MEMORY_LAST_SENT_KEY = "__rfaChatInputLastSent";
+const CLEAR_SENTINEL = "__RFA_EMPTY_DRAFT__";
 
 type DraftWindow = Window & { [MEMORY_DRAFT_KEY]?: string; [MEMORY_LAST_SENT_KEY]?: string };
 
 function writeStorageValue(key: string, value: string) {
   const write = (store: Storage) => {
-    if (value) store.setItem(key, value);
-    else store.removeItem(key);
+    if (value === CLEAR_SENTINEL) store.removeItem(key);
+    else store.setItem(key, value);
   };
   try { write(localStorage); } catch { /* ignore storage errors */ }
   try { write(sessionStorage); } catch { /* ignore storage errors */ }
+}
+
+function clearStorageValue(key: string) {
+  writeStorageValue(key, CLEAR_SENTINEL);
 }
 
 function readDraft() {
@@ -50,10 +55,22 @@ function writeDraft(value: string) {
   writeStorageValue(DRAFT_KEY, value);
 }
 
+function clearDraft() {
+  if (typeof window === "undefined") return;
+  (window as DraftWindow)[MEMORY_DRAFT_KEY] = "";
+  clearStorageValue(DRAFT_KEY);
+}
+
 function writeLastSentDraft(value: string) {
   if (typeof window === "undefined") return;
   (window as DraftWindow)[MEMORY_LAST_SENT_KEY] = value;
   writeStorageValue(LAST_SENT_DRAFT_KEY, value);
+}
+
+function clearLastSentDraft() {
+  if (typeof window === "undefined") return;
+  (window as DraftWindow)[MEMORY_LAST_SENT_KEY] = "";
+  clearStorageValue(LAST_SENT_DRAFT_KEY);
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
@@ -119,8 +136,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setMirror(false);
     try {
       await onSend(trimmed, files, { hat, mirror });
-      writeDraft("");
-      writeLastSentDraft("");
+      clearDraft();
+      clearLastSentDraft();
     } catch {
       setInput(sentText);
       writeDraft(sentText);
