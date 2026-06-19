@@ -41,6 +41,14 @@ function aiGatewayHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableGatewayStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 interface ChatMsg {
   role: "system" | "user" | "assistant";
   content: string;
@@ -59,11 +67,23 @@ async function llm(
   };
   if (opts.json) body.response_format = { type: "json_object" };
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: aiGatewayHeaders(LOVABLE_API_KEY),
-    body: JSON.stringify(body),
-  });
+  let resp: Response | null = null;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: aiGatewayHeaders(LOVABLE_API_KEY),
+        body: JSON.stringify(body),
+      });
+      if (!isRetryableGatewayStatus(resp.status) || attempt === 2) break;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw error;
+    }
+    await sleep(500 * (attempt + 1));
+  }
+  if (!resp) throw lastError instanceof Error ? lastError : new Error("LLM request failed");
   if (!resp.ok) {
     const t = await resp.text();
     throw new Error(`LLM ${resp.status}: ${t.slice(0, 200)}`);
