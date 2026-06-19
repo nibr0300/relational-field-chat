@@ -17,33 +17,43 @@ interface ChatInputProps {
 export type { AttachedFile };
 
 const DRAFT_KEY = "rfa:chat-input-draft";
+const LAST_SENT_DRAFT_KEY = "rfa:chat-input-last-sent";
 const MEMORY_DRAFT_KEY = "__rfaChatInputDraft";
+const MEMORY_LAST_SENT_KEY = "__rfaChatInputLastSent";
 
-type DraftWindow = Window & { [MEMORY_DRAFT_KEY]?: string };
+type DraftWindow = Window & { [MEMORY_DRAFT_KEY]?: string; [MEMORY_LAST_SENT_KEY]?: string };
+
+function writeStorageValue(key: string, value: string) {
+  const write = (store: Storage) => {
+    if (value) store.setItem(key, value);
+    else store.removeItem(key);
+  };
+  try { write(localStorage); } catch { /* ignore storage errors */ }
+  try { write(sessionStorage); } catch { /* ignore storage errors */ }
+}
 
 function readDraft() {
   if (typeof window === "undefined") return "";
   const memoryDraft = (window as DraftWindow)[MEMORY_DRAFT_KEY];
+  const memoryLastSent = (window as DraftWindow)[MEMORY_LAST_SENT_KEY];
   try {
     const stored = localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(DRAFT_KEY);
-    return stored ?? memoryDraft ?? "";
+    const lastSent = localStorage.getItem(LAST_SENT_DRAFT_KEY) ?? sessionStorage.getItem(LAST_SENT_DRAFT_KEY);
+    return stored ?? memoryDraft ?? lastSent ?? memoryLastSent ?? "";
   } catch { /* fall through to in-memory fallback */ }
-  return memoryDraft ?? "";
+  return memoryDraft ?? memoryLastSent ?? "";
 }
 
 function writeDraft(value: string) {
   if (typeof window === "undefined") return;
   (window as DraftWindow)[MEMORY_DRAFT_KEY] = value;
-  const write = (store: Storage) => {
-    if (value) store.setItem(DRAFT_KEY, value);
-    else store.removeItem(DRAFT_KEY);
-  };
-  try {
-    write(localStorage);
-  } catch { /* ignore storage errors */ }
-  try {
-    write(sessionStorage);
-  } catch { /* ignore storage errors */ }
+  writeStorageValue(DRAFT_KEY, value);
+}
+
+function writeLastSentDraft(value: string) {
+  if (typeof window === "undefined") return;
+  (window as DraftWindow)[MEMORY_LAST_SENT_KEY] = value;
+  writeStorageValue(LAST_SENT_DRAFT_KEY, value);
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
@@ -70,12 +80,27 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   useEffect(() => {
     const flushDraft = () => writeDraft(textareaRef.current?.value ?? inputRef.current);
+    const syncFromDom = () => {
+      const value = textareaRef.current?.value ?? "";
+      inputRef.current = value;
+      writeDraft(value);
+    };
+    const syncAfterDomMutation = () => window.setTimeout(syncFromDom, 0);
+    const textarea = textareaRef.current;
+    textarea?.addEventListener("input", syncFromDom);
+    textarea?.addEventListener("change", syncFromDom);
+    textarea?.addEventListener("paste", syncAfterDomMutation);
+    textarea?.addEventListener("cut", syncAfterDomMutation);
     window.addEventListener("beforeunload", flushDraft);
     window.addEventListener("pagehide", flushDraft);
     document.addEventListener("visibilitychange", flushDraft);
     import.meta.hot?.dispose(flushDraft);
     return () => {
       flushDraft();
+      textarea?.removeEventListener("input", syncFromDom);
+      textarea?.removeEventListener("change", syncFromDom);
+      textarea?.removeEventListener("paste", syncAfterDomMutation);
+      textarea?.removeEventListener("cut", syncAfterDomMutation);
       window.removeEventListener("beforeunload", flushDraft);
       window.removeEventListener("pagehide", flushDraft);
       document.removeEventListener("visibilitychange", flushDraft);
@@ -87,6 +112,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     if ((!trimmed && files.length === 0) || disabled) return;
     const sentText = input;
     writeDraft(sentText);
+    writeLastSentDraft(sentText);
     setInput("");
     setFiles([]);
     setHat(false);
@@ -94,6 +120,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     try {
       await onSend(trimmed, files, { hat, mirror });
       writeDraft("");
+      writeLastSentDraft("");
     } catch {
       setInput(sentText);
       writeDraft(sentText);
