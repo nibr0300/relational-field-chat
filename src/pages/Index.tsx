@@ -33,6 +33,31 @@ const WELCOME: Msg = {
 };
 
 const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
+const MESSAGE_CHECKPOINT_KEY = "rfa-visible-message-checkpoint";
+
+type MessageCheckpoint = { conversationId: string; updatedAt: number; messages: Msg[] };
+
+function safeCheckpointMessages(messages: Msg[]): Msg[] {
+  return messages.slice(-30).map((m) => ({ ...m, content: m.content.slice(0, 220_000) }));
+}
+
+function readMessageCheckpoint(conversationId: string): Msg[] | null {
+  try {
+    const raw = localStorage.getItem(MESSAGE_CHECKPOINT_KEY) ?? sessionStorage.getItem(MESSAGE_CHECKPOINT_KEY);
+    if (!raw) return null;
+    const checkpoint = JSON.parse(raw) as MessageCheckpoint;
+    if (checkpoint.conversationId !== conversationId) return null;
+    if (Date.now() - checkpoint.updatedAt > 6 * 60 * 60 * 1000) return null;
+    return Array.isArray(checkpoint.messages) && checkpoint.messages.length > 0 ? checkpoint.messages : null;
+  } catch { return null; }
+}
+
+function writeMessageCheckpoint(conversationId: string, messages: Msg[]) {
+  if (messages.length <= 1) return;
+  const payload = JSON.stringify({ conversationId, updatedAt: Date.now(), messages: safeCheckpointMessages(messages) });
+  try { localStorage.setItem(MESSAGE_CHECKPOINT_KEY, payload); } catch { /* ignore storage errors */ }
+  try { sessionStorage.setItem(MESSAGE_CHECKPOINT_KEY, payload); } catch { /* ignore storage errors */ }
+}
 
 export default function Index() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -55,6 +80,10 @@ export default function Index() {
       localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, activeConvId);
     }
   }, [activeConvId]);
+
+  useEffect(() => {
+    if (activeConvId) writeMessageCheckpoint(activeConvId, messages);
+  }, [activeConvId, messages]);
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
   const handleInitiative = useCallback((text: string, level: number) => {
@@ -100,10 +129,13 @@ export default function Index() {
           setActiveConvId(savedConversationId);
           try {
             const msgs = await loadMessages(savedConversationId);
-            if (!cancelled) setMessages(msgs.length > 0 ? msgs : [WELCOME]);
+            const checkpoint = readMessageCheckpoint(savedConversationId);
+            if (!cancelled) setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
           } catch (err) {
             console.error("Kunde inte återställa aktiv konversation:", err);
-            localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
+            const checkpoint = readMessageCheckpoint(savedConversationId);
+            if (!cancelled && checkpoint) setMessages(checkpoint);
+            else localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
           }
         }
       }
@@ -156,9 +188,12 @@ export default function Index() {
     setSidebarOpen(false);
     try {
       const msgs = await loadMessages(id);
-      setMessages(msgs.length > 0 ? msgs : [WELCOME]);
+      const checkpoint = readMessageCheckpoint(id);
+      setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
     } catch {
-      toast.error("Kunde inte ladda konversation");
+      const checkpoint = readMessageCheckpoint(id);
+      if (checkpoint) setMessages(checkpoint);
+      toast.error(checkpoint ? "Visar lokal checkpoint medan historiken laddar fel" : "Kunde inte ladda konversation");
     }
   }, []);
 
