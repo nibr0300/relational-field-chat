@@ -311,7 +311,10 @@ export default function Index() {
         return;
       } catch (e) {
         console.error("RAAP failed, falling back to standard chat:", e);
-        toast.error("Tänkar-hatten kraschade — kör standardflöde");
+        const message = e instanceof Error && e.message.startsWith("RAAP_FALLBACK:")
+          ? e.message.replace("RAAP_FALLBACK:", "")
+          : "Tänkar-hatten föll tillbaka — kör standardflöde";
+        toast.warning(message);
         // fall through to standard streaming
       }
     }
@@ -350,6 +353,11 @@ export default function Index() {
         },
         onPrmSignal: (signal) => {
           setPrmSignal(signal);
+        },
+        onStatus: (meta) => {
+          if (meta.kind === "continuation") {
+            toast.message(meta.message ?? "Svaret fortsätter automatiskt utan att börja om.");
+          }
         },
         onDone: async () => {
           setIsLoading(false);
