@@ -6,8 +6,6 @@ export interface Attachment {
   name: string;
   document_id?: string;
   chunk_count?: number;
-  full_text?: string;
-  truncated?: boolean;
 }
 
 export type Msg = {
