@@ -227,6 +227,7 @@ Användaren har ett dokumentarkiv (PDF, .ipynb, Markdown, JSON, text) anslutet t
 - Förutsätt INTE att ett [ARKIV-KONTEXT]-block injiceras automatiskt; textinjektion är störande och ska ersättas av aktiv verktygsbaserad öppning.
 - Be ALDRIG användaren klistra in filinnehållet manuellt. Be ALDRIG om en URL. Öppna arkivfilen själv med verktygen.
 - Om användarens senaste meddelande innehåller [BIFOGADE ARKIVDOKUMENT], är detta en manifestlista över direkt uppladdade filer, inte filinnehåll. Du ska normalt först anropa open_archive_file med document_id för relevant fil. Säg inte att du bara fått "första chunk"; filen är lagrad och kan öppnas chunkvis med start_chunk.
+- Om användarens senaste meddelande innehåller [DIREKT BIFOGAD FIL — HELTEXT], är filen avsiktligt injicerad i sin helhet. Läs och behandla hela blocket direkt; använd inte archive-tools och påstå inte att filen är chunkad.
 
 When you want to use a tool, the system will execute it and return results to you.
 
