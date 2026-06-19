@@ -39,14 +39,15 @@ function clearStorageValue(key: string) {
 
 function readDraft() {
   if (typeof window === "undefined") return "";
+  const present = (value: string | null | undefined) => value && value.length > 0 ? value : null;
   const memoryDraft = (window as DraftWindow)[MEMORY_DRAFT_KEY];
   const memoryLastSent = (window as DraftWindow)[MEMORY_LAST_SENT_KEY];
   try {
-    const stored = localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(DRAFT_KEY);
-    const lastSent = localStorage.getItem(LAST_SENT_DRAFT_KEY) ?? sessionStorage.getItem(LAST_SENT_DRAFT_KEY);
-    return stored ?? memoryDraft ?? lastSent ?? memoryLastSent ?? "";
+    const stored = present(localStorage.getItem(DRAFT_KEY)) ?? present(sessionStorage.getItem(DRAFT_KEY));
+    const lastSent = present(localStorage.getItem(LAST_SENT_DRAFT_KEY)) ?? present(sessionStorage.getItem(LAST_SENT_DRAFT_KEY));
+    return stored ?? present(memoryDraft) ?? lastSent ?? present(memoryLastSent) ?? "";
   } catch { /* fall through to in-memory fallback */ }
-  return memoryDraft ?? memoryLastSent ?? "";
+  return present(memoryDraft) ?? present(memoryLastSent) ?? "";
 }
 
 function writeDraft(value: string) {
