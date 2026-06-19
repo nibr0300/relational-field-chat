@@ -34,7 +34,7 @@ const WELCOME: Msg = {
 
 const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
 const MESSAGE_CHECKPOINT_KEY = "rfa-visible-message-checkpoint";
-const DIRECT_FILE_TEXT_LIMIT = 180_000;
+const DIRECT_FILE_TEXT_LIMIT = 900_000;
 
 type MessageCheckpoint = { conversationId: string; updatedAt: number; messages: Msg[] };
 
