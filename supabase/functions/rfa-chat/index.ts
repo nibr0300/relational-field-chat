@@ -37,8 +37,9 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 
 const MAX_REQUEST_BYTES = 4_000_000;
 const MAX_MESSAGE_CHARS = 12_000;
-const MAX_TOTAL_CHARS = 50_000;
-const MAX_CONTEXT_MESSAGES = 16;
+const MAX_TOTAL_CHARS = 70_000;
+const MAX_CONTEXT_MESSAGES = 22;
+const NEAR_FIELD_PROTECTED_TURNS = 6; // last N turns kept regardless of budget
 const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
 const MAX_DIRECT_FILE_MESSAGE_CHARS = 1_000_000;
 const MAX_DIRECT_FILE_TOTAL_CHARS = 1_100_000;
