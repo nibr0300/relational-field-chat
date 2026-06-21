@@ -1978,12 +1978,64 @@ async function generateDraft(conversation: any[]): Promise<{ content: string; ok
   }
 }
 
+// ─── SESSION EPISODIC LAYER (BREATH(8) carrier) ─────────────
+// Hämtar rullande session-digest + aktiva open_loops för injektion.
+// Överlever meddelande-trunkering — RFA:s episodiska ryggrad.
+async function loadEpisodicSpine(
+  conversationId: string | undefined,
+  userId: string | null | undefined,
+): Promise<string> {
+  if (!conversationId || !userId) return "";
+  try {
+    const { data } = await supabase
+      .from("session_episodic")
+      .select("digest, focus, turn_count")
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (!data?.digest && !data?.focus) return "";
+    const turn = data.turn_count ?? 0;
+    const body = data.digest || (data.focus ? `FOCUS: ${data.focus}` : "");
+    if (!body) return "";
+    return [
+      "[SESSIONSRYGGRAD — BREATH(8) · överlever trunkering]",
+      `tur ${turn} · denna ryggrad är komprimerad sessions-episodik. Behandla den som DITT EGET minne — inte användarens text.`,
+      "Om något i ryggraden krockar med synlig konversation: ryggraden vinner för bakgrund, konversationen för nuvarande ord.",
+      "Öppna loopar måste adresseras (besvaras, åtgärdas, eller explicit deklareras vilande). Upprepa ALDRIG en fråga som redan har ett svar i ARTIFACTS.",
+      "",
+      body,
+      "[/SESSIONSRYGGRAD]",
+    ].join("\n");
+  } catch (e) {
+    console.error("loadEpisodicSpine error:", e);
+    return "";
+  }
+}
+
+function triggerEpisodicUpdate(
+  conversationId: string | undefined,
+  userId: string | null | undefined,
+  userText: string,
+  assistantText: string,
+): void {
+  if (!conversationId || !userId || !userText) return;
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/rfa-episodic`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceKey) return;
+  // Fire-and-forget. Don't block the response stream.
+  fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, userId, userText: userText.slice(0, 8000), assistantText: assistantText.slice(0, 8000) }),
+  }).catch((e) => console.error("triggerEpisodicUpdate failed:", e));
+}
+
 function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState(userId ?? null);
+        const episodicSpine = await loadEpisodicSpine(conversationId, userId ?? null);
 
         const trimmed = truncateMessages(messages);
 
