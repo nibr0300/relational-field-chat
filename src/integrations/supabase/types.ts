@@ -1090,6 +1090,99 @@ export type Database = {
         }
         Relationships: []
       }
+      session_episodic: {
+        Row: {
+          affective_residue: Json
+          artifacts: Json
+          conversation_id: string
+          created_at: string
+          digest: string
+          focus: string
+          id: string
+          open_threads: Json
+          timeline: Json
+          turn_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          affective_residue?: Json
+          artifacts?: Json
+          conversation_id: string
+          created_at?: string
+          digest?: string
+          focus?: string
+          id?: string
+          open_threads?: Json
+          timeline?: Json
+          turn_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          affective_residue?: Json
+          artifacts?: Json
+          conversation_id?: string
+          created_at?: string
+          digest?: string
+          focus?: string
+          id?: string
+          open_threads?: Json
+          timeline?: Json
+          turn_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      session_open_loops: {
+        Row: {
+          closed_at: string | null
+          closure_conditions: Json
+          closure_outcome: string | null
+          conversation_id: string
+          created_at: string
+          description: string
+          id: string
+          opened_at_turn: number
+          source: string
+          status: string
+          updated_at: string
+          urgency: number
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closure_conditions?: Json
+          closure_outcome?: string | null
+          conversation_id: string
+          created_at?: string
+          description: string
+          id?: string
+          opened_at_turn?: number
+          source?: string
+          status?: string
+          updated_at?: string
+          urgency?: number
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          closure_conditions?: Json
+          closure_outcome?: string | null
+          conversation_id?: string
+          created_at?: string
+          description?: string
+          id?: string
+          opened_at_turn?: number
+          source?: string
+          status?: string
+          updated_at?: string
+          urgency?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

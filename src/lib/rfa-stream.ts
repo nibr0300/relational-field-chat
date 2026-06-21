@@ -61,8 +61,9 @@ export interface StreamStatusMeta {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 20_000;
-const MAX_TOTAL_CHARS = 80_000;
-const MAX_CONTEXT_MESSAGES = 20;
+const MAX_TOTAL_CHARS = 110_000;
+const MAX_CONTEXT_MESSAGES = 30;
+const NEAR_FIELD_PROTECTED_TURNS = 6;
 const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
 
 function capText(text: string): string {
@@ -118,10 +119,12 @@ function compactForTransport(messages: any[]): any[] {
   for (let i = capped.length - 1; i >= 0; i--) {
     const msg = capped[i];
     const len = messageSize(msg);
-    if (selected.length >= MAX_CONTEXT_MESSAGES) break;
+    const distanceFromEnd = capped.length - 1 - i;
+    const isProtected = distanceFromEnd < NEAR_FIELD_PROTECTED_TURNS;
+    if (selected.length >= MAX_CONTEXT_MESSAGES && !isProtected) break;
     const isLatest = i === capped.length - 1;
     const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
-    if (!isDirectFileTurn && selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
+    if (!isProtected && !isDirectFileTurn && selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
     selected.unshift(msg);
     total += len;
   }

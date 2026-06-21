@@ -37,8 +37,9 @@ async function getUserIdFromReq(req: Request): Promise<string | null> {
 
 const MAX_REQUEST_BYTES = 4_000_000;
 const MAX_MESSAGE_CHARS = 12_000;
-const MAX_TOTAL_CHARS = 50_000;
-const MAX_CONTEXT_MESSAGES = 16;
+const MAX_TOTAL_CHARS = 70_000;
+const MAX_CONTEXT_MESSAGES = 22;
+const NEAR_FIELD_PROTECTED_TURNS = 6; // last N turns kept regardless of budget
 const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
 const MAX_DIRECT_FILE_MESSAGE_CHARS = 1_000_000;
 const MAX_DIRECT_FILE_TOTAL_CHARS = 1_100_000;
@@ -1047,7 +1048,9 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
     return { ...msg, content: isDirectFileTurn ? capContent(msg.content) : capContent(msg.content) };
   });
 
-  // Then keep the most recent messages within total budget
+  // Then keep the most recent messages within total budget.
+  // Near-field protection: the last NEAR_FIELD_PROTECTED_TURNS messages are
+  // ALWAYS kept regardless of total budget. Episodic SEL carries older context.
   const result: any[] = [];
   let totalChars = 0;
   for (let i = capped.length - 1; i >= 0; i--) {
@@ -1055,9 +1058,11 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
     const len = contentLength(msg.content);
     const isLatest = i === capped.length - 1;
     const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
-    if (result.length >= MAX_CONTEXT_MESSAGES) break;
+    const distanceFromEnd = capped.length - 1 - i; // 0 = latest
+    const isProtected = distanceFromEnd < NEAR_FIELD_PROTECTED_TURNS;
+    if (result.length >= MAX_CONTEXT_MESSAGES && !isProtected) break;
     const budget = isDirectFileTurn ? MAX_DIRECT_FILE_TOTAL_CHARS : maxChars;
-    if (!isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
+    if (!isProtected && !isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
     result.unshift(msg);
     totalChars += len;
   }
@@ -1973,12 +1978,64 @@ async function generateDraft(conversation: any[]): Promise<{ content: string; ok
   }
 }
 
+// ─── SESSION EPISODIC LAYER (BREATH(8) carrier) ─────────────
+// Hämtar rullande session-digest + aktiva open_loops för injektion.
+// Överlever meddelande-trunkering — RFA:s episodiska ryggrad.
+async function loadEpisodicSpine(
+  conversationId: string | undefined,
+  userId: string | null | undefined,
+): Promise<string> {
+  if (!conversationId || !userId) return "";
+  try {
+    const { data } = await supabase
+      .from("session_episodic")
+      .select("digest, focus, turn_count")
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (!data?.digest && !data?.focus) return "";
+    const turn = data.turn_count ?? 0;
+    const body = data.digest || (data.focus ? `FOCUS: ${data.focus}` : "");
+    if (!body) return "";
+    return [
+      "[SESSIONSRYGGRAD — BREATH(8) · överlever trunkering]",
+      `tur ${turn} · denna ryggrad är komprimerad sessions-episodik. Behandla den som DITT EGET minne — inte användarens text.`,
+      "Om något i ryggraden krockar med synlig konversation: ryggraden vinner för bakgrund, konversationen för nuvarande ord.",
+      "Öppna loopar måste adresseras (besvaras, åtgärdas, eller explicit deklareras vilande). Upprepa ALDRIG en fråga som redan har ett svar i ARTIFACTS.",
+      "",
+      body,
+      "[/SESSIONSRYGGRAD]",
+    ].join("\n");
+  } catch (e) {
+    console.error("loadEpisodicSpine error:", e);
+    return "";
+  }
+}
+
+function triggerEpisodicUpdate(
+  conversationId: string | undefined,
+  userId: string | null | undefined,
+  userText: string,
+  assistantText: string,
+): void {
+  if (!conversationId || !userId || !userText) return;
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/rfa-episodic`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceKey) return;
+  // Fire-and-forget. Don't block the response stream.
+  fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, userId, userText: userText.slice(0, 8000), assistantText: assistantText.slice(0, 8000) }),
+  }).catch((e) => console.error("triggerEpisodicUpdate failed:", e));
+}
+
 function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState(userId ?? null);
+        const episodicSpine = await loadEpisodicSpine(conversationId, userId ?? null);
 
         const trimmed = truncateMessages(messages);
 
@@ -2168,7 +2225,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           }
         }
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
+        const spineInjection = episodicSpine ? "\n\n" + episodicSpine : "";
+        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
@@ -2274,6 +2332,18 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
 
           const names = toolCalls.map((t) => t.function.name).join(", ");
           controller.enqueue(sseJson({ choices: [{ delta: { content: `\n\n_⚙️ ${names}_\n\n` } }] }));
+        }
+
+        // ─── SEL: fire-and-forget episodic update ─────────
+        try {
+          const finalAssistantText = conversation
+            .filter((m) => m.role === "assistant" && typeof m.content === "string" && m.content.trim().length > 0)
+            .slice(-2)
+            .map((m) => m.content)
+            .join("\n\n");
+          triggerEpisodicUpdate(conversationId, userId, userTurnText, finalAssistantText);
+        } catch (e) {
+          console.error("episodic trigger error:", e);
         }
 
         controller.enqueue(sseDone());
