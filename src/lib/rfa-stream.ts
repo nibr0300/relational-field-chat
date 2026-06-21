@@ -119,10 +119,12 @@ function compactForTransport(messages: any[]): any[] {
   for (let i = capped.length - 1; i >= 0; i--) {
     const msg = capped[i];
     const len = messageSize(msg);
-    if (selected.length >= MAX_CONTEXT_MESSAGES) break;
+    const distanceFromEnd = capped.length - 1 - i;
+    const isProtected = distanceFromEnd < NEAR_FIELD_PROTECTED_TURNS;
+    if (selected.length >= MAX_CONTEXT_MESSAGES && !isProtected) break;
     const isLatest = i === capped.length - 1;
     const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
-    if (!isDirectFileTurn && selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
+    if (!isProtected && !isDirectFileTurn && selected.length > 0 && total + len > MAX_TOTAL_CHARS) continue;
     selected.unshift(msg);
     total += len;
   }
