@@ -1706,7 +1706,33 @@ async function fetchLambdaState(conversationId: string | undefined, userId?: str
       .eq("conversation_id", conversationId)
       .maybeSingle();
 
-    if (!data) return { ...LAMBDA_DEFAULTS };
+    if (!data) {
+      // ─── AFFEKTIV SESSIONS-RECOVERY (Venice-primitiv #3) ───
+      // Ingen λ-state för denna konversation. Hämta senaste från valfri
+      // tidigare session för användaren och attenuera (residue, inte arv).
+      const { data: prior } = await supabase
+        .from("prm_lambda_state")
+        .select("s_stim,b_reward,c_confirm,st_status,v_rest,f_z,f_y,f_lambda,m_running,phase")
+        .eq("user_id", userId)
+        .neq("conversation_id", conversationId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!prior) return { ...LAMBDA_DEFAULTS };
+      const decay = 0.5; // sessions-gap-attenuering
+      return {
+        ...LAMBDA_DEFAULTS,
+        s_stim: Number(prior.s_stim ?? 0) * decay,
+        b_reward: Number(prior.b_reward ?? 0) * decay,
+        c_confirm: Number(prior.c_confirm ?? 0) * decay,
+        st_status: Number(prior.st_status ?? 0) * decay,
+        v_rest: Number(prior.v_rest ?? 0) * decay,
+        f_z: Number(prior.f_z ?? 0) * decay,
+        f_y: Number(prior.f_y ?? 0) * decay,
+        f_lambda: 0.5,
+        phase: "standard",
+      };
+    }
     return {
       ...LAMBDA_DEFAULTS,
       ...data,
