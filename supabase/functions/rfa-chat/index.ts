@@ -2334,6 +2334,18 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           controller.enqueue(sseJson({ choices: [{ delta: { content: `\n\n_⚙️ ${names}_\n\n` } }] }));
         }
 
+        // ─── SEL: fire-and-forget episodic update ─────────
+        try {
+          const finalAssistantText = conversation
+            .filter((m) => m.role === "assistant" && typeof m.content === "string" && m.content.trim().length > 0)
+            .slice(-2)
+            .map((m) => m.content)
+            .join("\n\n");
+          triggerEpisodicUpdate(conversationId, userId, userTurnText, finalAssistantText);
+        } catch (e) {
+          console.error("episodic trigger error:", e);
+        }
+
         controller.enqueue(sseDone());
         controller.close();
       } catch (e) {
