@@ -1048,7 +1048,9 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
     return { ...msg, content: isDirectFileTurn ? capContent(msg.content) : capContent(msg.content) };
   });
 
-  // Then keep the most recent messages within total budget
+  // Then keep the most recent messages within total budget.
+  // Near-field protection: the last NEAR_FIELD_PROTECTED_TURNS messages are
+  // ALWAYS kept regardless of total budget. Episodic SEL carries older context.
   const result: any[] = [];
   let totalChars = 0;
   for (let i = capped.length - 1; i >= 0; i--) {
@@ -1056,9 +1058,11 @@ function truncateMessages(messages: any[], maxChars = MAX_TOTAL_CHARS): any[] {
     const len = contentLength(msg.content);
     const isLatest = i === capped.length - 1;
     const isDirectFileTurn = isLatest && typeof msg.content === "string" && msg.content.includes(DIRECT_FILE_MARKER);
-    if (result.length >= MAX_CONTEXT_MESSAGES) break;
+    const distanceFromEnd = capped.length - 1 - i; // 0 = latest
+    const isProtected = distanceFromEnd < NEAR_FIELD_PROTECTED_TURNS;
+    if (result.length >= MAX_CONTEXT_MESSAGES && !isProtected) break;
     const budget = isDirectFileTurn ? MAX_DIRECT_FILE_TOTAL_CHARS : maxChars;
-    if (!isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
+    if (!isProtected && !isDirectFileTurn && totalChars + len > budget && result.length >= 1) continue;
     result.unshift(msg);
     totalChars += len;
   }
