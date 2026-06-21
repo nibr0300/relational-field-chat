@@ -2225,7 +2225,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
           }
         }
 
-        const systemPrompt = RFA_SYSTEM_PROMPT + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
+        const spineInjection = episodicSpine ? "\n\n" + episodicSpine : "";
+        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
