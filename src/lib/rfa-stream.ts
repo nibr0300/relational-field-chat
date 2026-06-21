@@ -61,8 +61,9 @@ export interface StreamStatusMeta {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rfa-chat`;
 const MAX_MESSAGE_CHARS = 20_000;
-const MAX_TOTAL_CHARS = 80_000;
-const MAX_CONTEXT_MESSAGES = 20;
+const MAX_TOTAL_CHARS = 110_000;
+const MAX_CONTEXT_MESSAGES = 30;
+const NEAR_FIELD_PROTECTED_TURNS = 6;
 const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
 
 function capText(text: string): string {
