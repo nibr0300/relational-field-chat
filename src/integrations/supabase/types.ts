@@ -238,6 +238,133 @@ export type Database = {
         }
         Relationships: []
       }
+      dream_cycles: {
+        Row: {
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string
+          dissonance_count: number
+          duration_ms: number | null
+          error: string | null
+          event_window_end: string | null
+          event_window_start: string | null
+          hypotheses_consolidated: number
+          hypotheses_forgotten: number
+          hypotheses_generated: number
+          id: string
+          lambda_snapshot: Json | null
+          status: string
+          summary: string | null
+          trigger: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          dissonance_count?: number
+          duration_ms?: number | null
+          error?: string | null
+          event_window_end?: string | null
+          event_window_start?: string | null
+          hypotheses_consolidated?: number
+          hypotheses_forgotten?: number
+          hypotheses_generated?: number
+          id?: string
+          lambda_snapshot?: Json | null
+          status?: string
+          summary?: string | null
+          trigger: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          dissonance_count?: number
+          duration_ms?: number | null
+          error?: string | null
+          event_window_end?: string | null
+          event_window_start?: string | null
+          hypotheses_consolidated?: number
+          hypotheses_forgotten?: number
+          hypotheses_generated?: number
+          id?: string
+          lambda_snapshot?: Json | null
+          status?: string
+          summary?: string | null
+          trigger?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dream_cycles_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dream_hypotheses: {
+        Row: {
+          affective_resonance: Json | null
+          content: string
+          created_at: string
+          cycle_id: string
+          id: string
+          likelihood: number
+          phase: string
+          posterior: number
+          prior: number
+          promoted_to_id: string | null
+          promoted_to_table: string | null
+          source_ref: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          affective_resonance?: Json | null
+          content: string
+          created_at?: string
+          cycle_id: string
+          id?: string
+          likelihood?: number
+          phase: string
+          posterior?: number
+          prior?: number
+          promoted_to_id?: string | null
+          promoted_to_table?: string | null
+          source_ref?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          affective_resonance?: Json | null
+          content?: string
+          created_at?: string
+          cycle_id?: string
+          id?: string
+          likelihood?: number
+          phase?: string
+          posterior?: number
+          prior?: number
+          promoted_to_id?: string | null
+          promoted_to_table?: string | null
+          source_ref?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dream_hypotheses_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "dream_cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       executions: {
         Row: {
           code: string

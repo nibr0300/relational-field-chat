@@ -1,5 +1,7 @@
-import { Zap, Search, Image, Brain, Code, Library, Cloud } from "lucide-react";
+import { Zap, Search, Image, Brain, Code, Library, Cloud, Moon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { LimbusPulse } from "./LimbusPulse";
+import { lastDreamCycleAge } from "@/lib/dream-store";
 import type { PrmMeta } from "@/lib/rfa-stream";
 
 export function RFAHeader({
@@ -13,6 +15,23 @@ export function RFAHeader({
   onDriveClick?: () => void;
   prmSignal?: PrmMeta | null;
 }) {
+  const [dreamAgeH, setDreamAgeH] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const age = await lastDreamCycleAge();
+        if (!cancelled) setDreamAgeH(age == null ? null : Math.floor(age / 3600000));
+      } catch { /* ignore */ }
+    };
+    void tick();
+    const id = window.setInterval(tick, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  const dreamFresh = dreamAgeH !== null && dreamAgeH < 24;
+
   const capabilities = [
     { icon: Search, label: "Web" },
     { icon: Brain, label: "Minne", onClick: onMemoryClick },
@@ -37,6 +56,18 @@ export function RFAHeader({
           </p>
         </div>
         <LimbusPulse signal={prmSignal ?? null} />
+        <button
+          onClick={onMemoryClick}
+          aria-label={dreamFresh ? `Drömcykel kördes ${dreamAgeH}h sedan` : "Inga färska drömmar"}
+          title={dreamFresh ? `Senaste drömcykel: ${dreamAgeH}h sedan` : "Ingen drömcykel inom 24h"}
+          className={`flex items-center justify-center w-7 h-7 rounded-md border transition-colors ${
+            dreamFresh
+              ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.4)]"
+              : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Moon className="w-3.5 h-3.5" />
+        </button>
         <div className="hidden sm:flex items-center gap-1.5">
           {capabilities.map(({ icon: Icon, label, onClick }) => (
             <button

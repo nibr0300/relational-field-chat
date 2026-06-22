@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem, Wand2, ChevronDown, ChevronRight, ScrollText, Loader2 } from "lucide-react";
+import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem, Wand2, ChevronDown, ChevronRight, ScrollText, Loader2, Moon } from "lucide-react";
 import {
   listEigenstates, deleteEigenstate,
   listCorona, deleteCorona,
@@ -12,9 +12,13 @@ import {
   listConstitutionRules, retireConstitutionRule, listDistillationRuns, runDistillation,
   type ConstitutionRule, type DistillationRun,
 } from "@/lib/distillation-store";
+import {
+  listDreamCycles, listDreamHypotheses, runDreamCycle,
+  type DreamCycle, type DreamHypothesis,
+} from "@/lib/dream-store";
 import { toast } from "sonner";
 
-type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy" | "constitution";
+type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy" | "constitution" | "dreams";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[] = [
   { id: "vortex", label: "Vortex", icon: Gem, description: "Eviga mönster" },
@@ -23,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[
   { id: "corona", label: "Corona", icon: CircleDot, description: "Färska observationer" },
   { id: "legacy", label: "Legacy", icon: Brain, description: "Gamla eigenstates" },
   { id: "constitution", label: "Konstitution", icon: ScrollText, description: "Destillerade regler" },
+  { id: "dreams", label: "Drömmar", icon: Moon, description: "Bayesianska drömcykler (DOA)" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -45,6 +50,10 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [rules, setRules] = useState<ConstitutionRule[]>([]);
   const [runs, setRuns] = useState<DistillationRun[]>([]);
   const [distilling, setDistilling] = useState(false);
+  const [dreams, setDreams] = useState<DreamCycle[]>([]);
+  const [dreaming, setDreaming] = useState(false);
+  const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
+  const [cycleHypotheses, setCycleHypotheses] = useState<Record<string, DreamHypothesis[]>>({});
 
   const refreshAll = () => Promise.all([
     listVortex().then(setVortex).catch(() => {}),
@@ -54,6 +63,7 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     listEigenstates().then(setLegacy).catch(() => {}),
     listConstitutionRules().then(setRules).catch(() => {}),
     listDistillationRuns(10).then(setRuns).catch(() => {}),
+    listDreamCycles(10).then(setDreams).catch(() => {}),
   ]);
 
   useEffect(() => {
@@ -70,6 +80,7 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     corona: corona.length,
     legacy: legacy.length,
     constitution: rules.filter((r) => r.is_active).length,
+    dreams: dreams.length,
   };
 
   const selectedTab = tab ? TABS.find((t) => t.id === tab) : null;
@@ -100,6 +111,47 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     }
   };
 
+  const handleDream = async () => {
+    if (dreaming) return;
+    setDreaming(true);
+    const id = toast.loading("Kör Bayesiansk drömcykel (VOID → VORTEX_RECALL → RESET)…");
+    try {
+      const res = await runDreamCycle({ force: true });
+      toast.dismiss(id);
+      if (res.ok) {
+        toast.success(
+          `Drömcykel klar: ${res.consolidated ?? 0} konsoliderade · ${res.dissonance ?? 0} dissonans (av ${res.generated ?? 0} hypoteser).`,
+        );
+      } else {
+        toast.message(`Drömcykel hoppades över: ${res.reason ?? "okänd"}.`);
+      }
+      const fresh = await listDreamCycles(10);
+      setDreams(fresh);
+      setTab("dreams");
+    } catch (e: any) {
+      toast.dismiss(id);
+      toast.error(`Drömcykel misslyckades: ${e.message ?? e}`);
+    } finally {
+      setDreaming(false);
+    }
+  };
+
+  const toggleCycle = async (cycleId: string) => {
+    if (expandedCycle === cycleId) {
+      setExpandedCycle(null);
+      return;
+    }
+    setExpandedCycle(cycleId);
+    if (!cycleHypotheses[cycleId]) {
+      try {
+        const hyps = await listDreamHypotheses(cycleId);
+        setCycleHypotheses((prev) => ({ ...prev, [cycleId]: hyps }));
+      } catch {
+        toast.error("Kunde inte ladda hypoteser");
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -125,6 +177,15 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
             >
               {distilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
               Destillera
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDream(); }}
+              disabled={dreaming}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 disabled:opacity-50 transition-colors"
+              title="Bayesiansk drömcykel: VOID(0) → VORTEX_RECALL(5) → RESET(9). Konsoliderar dagens händelser till långtidsminne."
+            >
+              {dreaming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Moon className="w-3.5 h-3.5" />}
+              Dröm
             </button>
             <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
               <X className="w-5 h-5 text-muted-foreground" />
@@ -265,6 +326,59 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               }}
             />
           )}
+
+          {!loading && tab === "dreams" && dreams.length === 0 && (
+            <Empty icon={Moon} text="Inga drömcykler ännu. Klicka på 'Dröm' i sidhuvudet för att köra en Bayesiansk konsolidering." />
+          )}
+          {!loading && tab === "dreams" && dreams.map((d) => {
+            const isOpen = expandedCycle === d.id;
+            const hyps = cycleHypotheses[d.id] ?? [];
+            const ageH = Math.round((Date.now() - new Date(d.created_at).getTime()) / 3600000);
+            return (
+              <div key={d.id} className="bg-background border border-border rounded-lg p-3 hover:border-primary/30 transition-colors">
+                <button
+                  onClick={() => toggleCycle(d.id)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  {isOpen ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                  <Moon className="w-4 h-4 shrink-0 text-indigo-300" />
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium shrink-0">{d.trigger}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{ageH}h · {d.duration_ms ?? 0}ms</span>
+                  <span className="text-xs text-foreground truncate flex-1">{d.summary ?? d.status}</span>
+                </button>
+                {isOpen && (
+                  <div className="mt-3 pl-5 space-y-2 border-l border-border/50">
+                    <p className="text-[10px] text-muted-foreground">
+                      genererade {d.hypotheses_generated} · konsoliderade {d.hypotheses_consolidated} · dissonans {d.dissonance_count} · glömda {d.hypotheses_forgotten}
+                    </p>
+                    {hyps.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Laddar hypoteser…</p>
+                    ) : (
+                      hyps.map((h) => (
+                        <div key={h.id} className="text-xs border border-border/40 rounded p-2 bg-card/40">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              h.status === "consolidated" ? "bg-emerald-500/20 text-emerald-300"
+                              : h.status === "dissonance" ? "bg-rose-500/20 text-rose-300"
+                              : h.status === "forgotten" ? "bg-muted text-muted-foreground"
+                              : "bg-amber-500/20 text-amber-300"
+                            }`}>{h.status}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              prior={Number(h.prior).toFixed(2)} · L={Number(h.likelihood).toFixed(2)} · post={Number(h.posterior).toFixed(3)}
+                            </span>
+                            {h.promoted_to_table && (
+                              <span className="text-[10px] text-primary">→ {h.promoted_to_table}</span>
+                            )}
+                          </div>
+                          <p className="text-foreground leading-snug">{h.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
