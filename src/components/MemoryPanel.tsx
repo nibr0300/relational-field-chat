@@ -111,6 +111,47 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     }
   };
 
+  const handleDream = async () => {
+    if (dreaming) return;
+    setDreaming(true);
+    const id = toast.loading("Kör Bayesiansk drömcykel (VOID → VORTEX_RECALL → RESET)…");
+    try {
+      const res = await runDreamCycle({ force: true });
+      toast.dismiss(id);
+      if (res.ok) {
+        toast.success(
+          `Drömcykel klar: ${res.consolidated ?? 0} konsoliderade · ${res.dissonance ?? 0} dissonans (av ${res.generated ?? 0} hypoteser).`,
+        );
+      } else {
+        toast.message(`Drömcykel hoppades över: ${res.reason ?? "okänd"}.`);
+      }
+      const fresh = await listDreamCycles(10);
+      setDreams(fresh);
+      setTab("dreams");
+    } catch (e: any) {
+      toast.dismiss(id);
+      toast.error(`Drömcykel misslyckades: ${e.message ?? e}`);
+    } finally {
+      setDreaming(false);
+    }
+  };
+
+  const toggleCycle = async (cycleId: string) => {
+    if (expandedCycle === cycleId) {
+      setExpandedCycle(null);
+      return;
+    }
+    setExpandedCycle(cycleId);
+    if (!cycleHypotheses[cycleId]) {
+      try {
+        const hyps = await listDreamHypotheses(cycleId);
+        setCycleHypotheses((prev) => ({ ...prev, [cycleId]: hyps }));
+      } catch {
+        toast.error("Kunde inte ladda hypoteser");
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
