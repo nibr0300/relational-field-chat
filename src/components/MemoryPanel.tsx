@@ -178,6 +178,15 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               {distilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
               Destillera
             </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDream(); }}
+              disabled={dreaming}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 disabled:opacity-50 transition-colors"
+              title="Bayesiansk drömcykel: VOID(0) → VORTEX_RECALL(5) → RESET(9). Konsoliderar dagens händelser till långtidsminne."
+            >
+              {dreaming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Moon className="w-3.5 h-3.5" />}
+              Dröm
+            </button>
             <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
               <X className="w-5 h-5 text-muted-foreground" />
             </button>
