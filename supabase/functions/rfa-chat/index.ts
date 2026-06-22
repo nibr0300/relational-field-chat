@@ -2055,6 +2055,57 @@ function triggerEpisodicUpdate(
   }).catch((e) => console.error("triggerEpisodicUpdate failed:", e));
 }
 
+// ─── DREAM RESIDUE — morgon-eko från nattens Bayesianska drömcykel ───
+// Läser senaste rfa-dream konsolideringar (< 24h) och injicerar topp-3 som
+// "drömresidue" i systemprompten. Detta är inte fakta — det är en svag bakgrundston.
+async function loadDreamResidue(userId: string | null | undefined): Promise<string> {
+  if (!userId) return "";
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: cycle } = await supabase
+      .from("dream_cycles")
+      .select("id, created_at, hypotheses_consolidated, dissonance_count, summary")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!cycle?.id) return "";
+
+    const { data: hyps } = await supabase
+      .from("dream_hypotheses")
+      .select("content, posterior, status")
+      .eq("cycle_id", cycle.id)
+      .in("status", ["consolidated", "dissonance"])
+      .order("posterior", { ascending: false })
+      .limit(5);
+
+    const consolidated = (hyps ?? []).filter((h: any) => h.status === "consolidated").slice(0, 3);
+    const dissonance = (hyps ?? []).filter((h: any) => h.status === "dissonance").slice(0, 2);
+    if (consolidated.length === 0 && dissonance.length === 0) return "";
+
+    const ageHours = Math.round((Date.now() - new Date(cycle.created_at).getTime()) / 3600000);
+    const lines: string[] = [
+      "[DRÖMRESIDUE — nattens Bayesianska konsolidering · operator 0→5→9]",
+      `cykel ${ageHours}h gammal · ${cycle.hypotheses_consolidated} konsoliderade · ${cycle.dissonance_count} dissonans`,
+      "Detta är morgon-eko från VOID-drömprocessering, inte fakta. Behandla som svag bakgrundsfärgning — inte som beslut.",
+    ];
+    if (consolidated.length) {
+      lines.push("", "KONSOLIDERADE TOLKNINGAR:");
+      consolidated.forEach((h: any) => lines.push(`  · ${h.content}`));
+    }
+    if (dissonance.length) {
+      lines.push("", "DISSONANS (öppna frågor från drömmen):");
+      dissonance.forEach((h: any) => lines.push(`  ? ${h.content}`));
+    }
+    lines.push("[/DRÖMRESIDUE]");
+    return lines.join("\n");
+  } catch (e) {
+    console.error("loadDreamResidue error:", e);
+    return "";
+  }
+
 function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
