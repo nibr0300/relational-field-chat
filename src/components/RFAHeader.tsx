@@ -56,6 +56,18 @@ export function RFAHeader({
           </p>
         </div>
         <LimbusPulse signal={prmSignal ?? null} />
+        <button
+          onClick={onMemoryClick}
+          aria-label={dreamFresh ? `Drömcykel kördes ${dreamAgeH}h sedan` : "Inga färska drömmar"}
+          title={dreamFresh ? `Senaste drömcykel: ${dreamAgeH}h sedan` : "Ingen drömcykel inom 24h"}
+          className={`flex items-center justify-center w-7 h-7 rounded-md border transition-colors ${
+            dreamFresh
+              ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300 shadow-[0_0_8px_rgba(99,102,241,0.4)]"
+              : "border-border bg-secondary/40 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Moon className="w-3.5 h-3.5" />
+        </button>
         <div className="hidden sm:flex items-center gap-1.5">
           {capabilities.map(({ icon: Icon, label, onClick }) => (
             <button
