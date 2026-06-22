@@ -100,6 +100,44 @@ export default function Index() {
     onInitiative: handleInitiative,
   });
 
+  // ─── Bayesiansk drömcykel — idle-trigger ───
+  // När konversationen varit tyst > 30 min OCH ingen cykel kördes senaste 20h,
+  // kicka igång rfa-dream fire-and-forget i bakgrunden.
+  useEffect(() => {
+    if (!activeConvId || isLoading) return;
+    let cancelled = false;
+    const lastActivityRef = { current: Date.now() };
+    const onActivity = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener("mousemove", onActivity, { passive: true });
+    window.addEventListener("keydown", onActivity, { passive: true });
+
+    const id = window.setInterval(async () => {
+      if (cancelled) return;
+      const idleMs = Date.now() - lastActivityRef.current;
+      if (idleMs < 30 * 60 * 1000) return;
+      try {
+        const { lastDreamCycleAge } = await import("@/lib/dream-store");
+        const age = await lastDreamCycleAge();
+        if (age !== null && age < 20 * 60 * 60 * 1000) return;
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
+        if (!userId) return;
+        await supabase.functions.invoke("rfa-dream", {
+          body: { userId, conversationId: activeConvId, trigger: "idle_threshold" },
+        });
+      } catch (e) {
+        console.warn("idle dream trigger skipped:", e);
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("mousemove", onActivity);
+      window.removeEventListener("keydown", onActivity);
+    };
+  }, [activeConvId, isLoading]);
+
   useEffect(() => {
     let cancelled = false;
 
