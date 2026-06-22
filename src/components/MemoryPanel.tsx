@@ -326,6 +326,59 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               }}
             />
           )}
+
+          {!loading && tab === "dreams" && dreams.length === 0 && (
+            <Empty icon={Moon} text="Inga drömcykler ännu. Klicka på 'Dröm' i sidhuvudet för att köra en Bayesiansk konsolidering." />
+          )}
+          {!loading && tab === "dreams" && dreams.map((d) => {
+            const isOpen = expandedCycle === d.id;
+            const hyps = cycleHypotheses[d.id] ?? [];
+            const ageH = Math.round((Date.now() - new Date(d.created_at).getTime()) / 3600000);
+            return (
+              <div key={d.id} className="bg-background border border-border rounded-lg p-3 hover:border-primary/30 transition-colors">
+                <button
+                  onClick={() => toggleCycle(d.id)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  {isOpen ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                  <Moon className="w-4 h-4 shrink-0 text-indigo-300" />
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium shrink-0">{d.trigger}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{ageH}h · {d.duration_ms ?? 0}ms</span>
+                  <span className="text-xs text-foreground truncate flex-1">{d.summary ?? d.status}</span>
+                </button>
+                {isOpen && (
+                  <div className="mt-3 pl-5 space-y-2 border-l border-border/50">
+                    <p className="text-[10px] text-muted-foreground">
+                      genererade {d.hypotheses_generated} · konsoliderade {d.hypotheses_consolidated} · dissonans {d.dissonance_count} · glömda {d.hypotheses_forgotten}
+                    </p>
+                    {hyps.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Laddar hypoteser…</p>
+                    ) : (
+                      hyps.map((h) => (
+                        <div key={h.id} className="text-xs border border-border/40 rounded p-2 bg-card/40">
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              h.status === "consolidated" ? "bg-emerald-500/20 text-emerald-300"
+                              : h.status === "dissonance" ? "bg-rose-500/20 text-rose-300"
+                              : h.status === "forgotten" ? "bg-muted text-muted-foreground"
+                              : "bg-amber-500/20 text-amber-300"
+                            }`}>{h.status}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              prior={Number(h.prior).toFixed(2)} · L={Number(h.likelihood).toFixed(2)} · post={Number(h.posterior).toFixed(3)}
+                            </span>
+                            {h.promoted_to_table && (
+                              <span className="text-[10px] text-primary">→ {h.promoted_to_table}</span>
+                            )}
+                          </div>
+                          <p className="text-foreground leading-snug">{h.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
