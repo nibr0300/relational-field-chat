@@ -50,6 +50,10 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [rules, setRules] = useState<ConstitutionRule[]>([]);
   const [runs, setRuns] = useState<DistillationRun[]>([]);
   const [distilling, setDistilling] = useState(false);
+  const [dreams, setDreams] = useState<DreamCycle[]>([]);
+  const [dreaming, setDreaming] = useState(false);
+  const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
+  const [cycleHypotheses, setCycleHypotheses] = useState<Record<string, DreamHypothesis[]>>({});
 
   const refreshAll = () => Promise.all([
     listVortex().then(setVortex).catch(() => {}),
@@ -59,6 +63,7 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     listEigenstates().then(setLegacy).catch(() => {}),
     listConstitutionRules().then(setRules).catch(() => {}),
     listDistillationRuns(10).then(setRuns).catch(() => {}),
+    listDreamCycles(10).then(setDreams).catch(() => {}),
   ]);
 
   useEffect(() => {
@@ -75,6 +80,7 @@ export function MemoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     corona: corona.length,
     legacy: legacy.length,
     constitution: rules.filter((r) => r.is_active).length,
+    dreams: dreams.length,
   };
 
   const selectedTab = tab ? TABS.find((t) => t.id === tab) : null;
