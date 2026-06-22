@@ -561,10 +561,15 @@ Deno.serve(async (req) => {
           user_id: userId,
           conversation_id: conversationId ?? null,
           operator_trace: "dream:0-5-9",
-          gate_status: "pass",
           dominant_operator: "9-RESET",
-          msc: 1.0,
-          metadata: { cycle_id: cycleId, kind: "bayesian_dream" },
+          gate_decision: "pass",
+          msc_estimate: 1.0,
+          msc_threshold: 0.714,
+          fz: lambda?.f_z ?? 0,
+          fa: lambda?.c_confirm ?? 0,
+          fy: lambda?.f_y ?? 0,
+          reintegration_used: false,
+          raw: { cycle_id: cycleId, kind: "bayesian_dream", consolidated: consolidated.length, dissonance: dissonance.length },
         });
       } catch (e) {
         console.warn("dream frame log skipped:", e instanceof Error ? e.message : e);
