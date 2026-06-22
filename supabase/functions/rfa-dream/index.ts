@@ -260,13 +260,13 @@ async function vortexPhase(hypotheses: Hypothesis[], userId: string): Promise<vo
 
   // Hämta konsoliderat minne (MCP + topp limbus + topp vortex)
   const [mcp, limbus, vortex] = await Promise.all([
-    supabase.from("mcp_eigenstates").select("content, anchor_type").eq("user_id", userId).limit(20),
+    supabase.from("mcp_eigenstates").select("core_insight, category").eq("user_id", userId).eq("is_active", true).limit(20),
     supabase.from("memory_limbus").select("summary, category").eq("user_id", userId).order("mean_significance", { ascending: false }).limit(15),
     supabase.from("memory_vortex").select("pattern_name, description").eq("user_id", userId).order("stability", { ascending: false }).limit(10),
   ]);
 
   const knownLines: string[] = [];
-  (mcp.data ?? []).forEach((r: any) => knownLines.push(`MCP[${r.anchor_type}]: ${String(r.content ?? "").slice(0, 200)}`));
+  (mcp.data ?? []).forEach((r: any) => knownLines.push(`MCP[${r.category}]: ${String(r.core_insight ?? "").slice(0, 200)}`));
   (vortex.data ?? []).forEach((r: any) => knownLines.push(`VORTEX[${r.pattern_name}]: ${String(r.description ?? "").slice(0, 200)}`));
   (limbus.data ?? []).forEach((r: any) => knownLines.push(`LIMBUS[${r.category}]: ${String(r.summary ?? "").slice(0, 200)}`));
 
@@ -359,14 +359,20 @@ async function promoteToMemory(
 ): Promise<{ table: string; id: string } | null> {
   try {
     if (h.posterior >= MCP_PROMOTE_THRESHOLD) {
+      const shortName = `dream:${h.content.slice(0, 60).replace(/\s+/g, " ").trim()}`;
       const { data } = await supabase
         .from("mcp_eigenstates")
         .insert({
           user_id: userId,
-          anchor_type: "dream_consolidation",
-          content: h.content,
-          significance: clamp(h.posterior * 10, 0, 10),
+          eigenstate_name: shortName,
+          core_insight: h.content,
+          operator_signature: "0-VOID→5-BALANCE→9-RESET",
+          category: "dream_consolidation",
           source: "rfa-dream",
+          fz: 1 - h.likelihood,
+          fa: h.likelihood,
+          msc: h.posterior,
+          is_active: true,
           metadata: { prior: h.prior, likelihood: h.likelihood, posterior: h.posterior, source_ref: h.source_ref },
         })
         .select("id")
@@ -386,6 +392,7 @@ async function promoteToMemory(
         .single();
       if (data?.id) return { table: "memory_vortex", id: data.id };
     } else {
+      const nowIso = new Date().toISOString();
       const { data } = await supabase
         .from("memory_limbus")
         .insert({
@@ -394,6 +401,8 @@ async function promoteToMemory(
           summary: h.content,
           observation_count: 1,
           mean_significance: clamp(h.posterior, 0, 1),
+          first_seen: nowIso,
+          last_seen: nowIso,
         })
         .select("id")
         .single();
