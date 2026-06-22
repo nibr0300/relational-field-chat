@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem, Wand2, ChevronDown, ChevronRight, ScrollText, Loader2 } from "lucide-react";
+import { ArrowLeft, Brain, Trash2, X, Sparkles, Layers, CircleDot, Gem, Wand2, ChevronDown, ChevronRight, ScrollText, Loader2, Moon } from "lucide-react";
 import {
   listEigenstates, deleteEigenstate,
   listCorona, deleteCorona,
@@ -12,9 +12,13 @@ import {
   listConstitutionRules, retireConstitutionRule, listDistillationRuns, runDistillation,
   type ConstitutionRule, type DistillationRun,
 } from "@/lib/distillation-store";
+import {
+  listDreamCycles, listDreamHypotheses, runDreamCycle,
+  type DreamCycle, type DreamHypothesis,
+} from "@/lib/dream-store";
 import { toast } from "sonner";
 
-type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy" | "constitution";
+type Tab = "vortex" | "friction" | "limbus" | "corona" | "legacy" | "constitution" | "dreams";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[] = [
   { id: "vortex", label: "Vortex", icon: Gem, description: "Eviga mönster" },
@@ -23,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: typeof Brain; description: string }[
   { id: "corona", label: "Corona", icon: CircleDot, description: "Färska observationer" },
   { id: "legacy", label: "Legacy", icon: Brain, description: "Gamla eigenstates" },
   { id: "constitution", label: "Konstitution", icon: ScrollText, description: "Destillerade regler" },
+  { id: "dreams", label: "Drömmar", icon: Moon, description: "Bayesianska drömcykler (DOA)" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
