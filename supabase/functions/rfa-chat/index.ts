@@ -2113,6 +2113,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
       try {
         const memoryBlock = await loadMemoryState(userId ?? null);
         const episodicSpine = await loadEpisodicSpine(conversationId, userId ?? null);
+        const dreamResidue = await loadDreamResidue(userId ?? null);
 
         const trimmed = truncateMessages(messages);
 
