@@ -1,5 +1,7 @@
-import { Zap, Search, Image, Brain, Code, Library, Cloud } from "lucide-react";
+import { Zap, Search, Image, Brain, Code, Library, Cloud, Moon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { LimbusPulse } from "./LimbusPulse";
+import { lastDreamCycleAge } from "@/lib/dream-store";
 import type { PrmMeta } from "@/lib/rfa-stream";
 
 export function RFAHeader({
@@ -13,6 +15,23 @@ export function RFAHeader({
   onDriveClick?: () => void;
   prmSignal?: PrmMeta | null;
 }) {
+  const [dreamAgeH, setDreamAgeH] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const age = await lastDreamCycleAge();
+        if (!cancelled) setDreamAgeH(age == null ? null : Math.floor(age / 3600000));
+      } catch { /* ignore */ }
+    };
+    void tick();
+    const id = window.setInterval(tick, 5 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  const dreamFresh = dreamAgeH !== null && dreamAgeH < 24;
+
   const capabilities = [
     { icon: Search, label: "Web" },
     { icon: Brain, label: "Minne", onClick: onMemoryClick },
