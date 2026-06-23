@@ -2545,7 +2545,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(createChatStream(messages, conversationId, !!mirror, userId), {
+    return new Response(createChatStream(messages, conversationId, !!mirror, userId, req.signal), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
 
