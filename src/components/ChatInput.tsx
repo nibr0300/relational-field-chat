@@ -18,11 +18,20 @@ export type { AttachedFile };
 
 const DRAFT_KEY = "rfa:chat-input-draft";
 const LAST_SENT_DRAFT_KEY = "rfa:chat-input-last-sent";
+const DRAFT_TS_KEY = "rfa:chat-input-draft:updated-at";
+const LAST_SENT_DRAFT_TS_KEY = "rfa:chat-input-last-sent:updated-at";
 const MEMORY_DRAFT_KEY = "__rfaChatInputDraft";
 const MEMORY_LAST_SENT_KEY = "__rfaChatInputLastSent";
+const MEMORY_DRAFT_TS_KEY = "__rfaChatInputDraftUpdatedAt";
+const MEMORY_LAST_SENT_TS_KEY = "__rfaChatInputLastSentUpdatedAt";
 const CLEAR_SENTINEL = "__RFA_EMPTY_DRAFT__";
 
-type DraftWindow = Window & { [MEMORY_DRAFT_KEY]?: string; [MEMORY_LAST_SENT_KEY]?: string };
+type DraftWindow = Window & {
+  [MEMORY_DRAFT_KEY]?: string;
+  [MEMORY_LAST_SENT_KEY]?: string;
+  [MEMORY_DRAFT_TS_KEY]?: number;
+  [MEMORY_LAST_SENT_TS_KEY]?: number;
+};
 
 function writeStorageValue(key: string, value: string) {
   const write = (store: Storage) => {
@@ -37,41 +46,86 @@ function clearStorageValue(key: string) {
   writeStorageValue(key, CLEAR_SENTINEL);
 }
 
-function readDraft() {
+function readStorageTimestamp(key: string): number {
+  const parse = (value: string | null | undefined) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  try {
+    return Math.max(parse(localStorage.getItem(key)), parse(sessionStorage.getItem(key)));
+  } catch { return 0; }
+}
+
+function writeTimestamp(key: string, value: number) {
+  writeStorageValue(key, String(value));
+}
+
+function clearTimestamp(key: string) {
+  clearStorageValue(key);
+}
+
+function readDraftCandidate() {
   if (typeof window === "undefined") return "";
   const present = (value: string | null | undefined) => value && value.length > 0 ? value : null;
   const memoryDraft = (window as DraftWindow)[MEMORY_DRAFT_KEY];
   const memoryLastSent = (window as DraftWindow)[MEMORY_LAST_SENT_KEY];
+  const candidates: Array<{ value: string; updatedAt: number; kind: "draft" | "lastSent" }> = [];
   try {
     const stored = present(localStorage.getItem(DRAFT_KEY)) ?? present(sessionStorage.getItem(DRAFT_KEY));
     const lastSent = present(localStorage.getItem(LAST_SENT_DRAFT_KEY)) ?? present(sessionStorage.getItem(LAST_SENT_DRAFT_KEY));
-    return stored ?? present(memoryDraft) ?? lastSent ?? present(memoryLastSent) ?? "";
+    if (stored) candidates.push({ value: stored, updatedAt: readStorageTimestamp(DRAFT_TS_KEY), kind: "draft" });
+    if (lastSent) candidates.push({ value: lastSent, updatedAt: readStorageTimestamp(LAST_SENT_DRAFT_TS_KEY), kind: "lastSent" });
   } catch { /* fall through to in-memory fallback */ }
-  return present(memoryDraft) ?? present(memoryLastSent) ?? "";
+  const win = window as DraftWindow;
+  const memDraft = present(memoryDraft);
+  const memLastSent = present(memoryLastSent);
+  if (memDraft) candidates.push({ value: memDraft, updatedAt: win[MEMORY_DRAFT_TS_KEY] ?? 0, kind: "draft" });
+  if (memLastSent) candidates.push({ value: memLastSent, updatedAt: win[MEMORY_LAST_SENT_TS_KEY] ?? 0, kind: "lastSent" });
+
+  candidates.sort((a, b) => {
+    if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+    if (a.kind !== b.kind) return a.kind === "draft" ? -1 : 1;
+    return b.value.length - a.value.length;
+  });
+  return candidates[0]?.value ?? "";
+}
+
+function readDraft() {
+  return readDraftCandidate();
 }
 
 function writeDraft(value: string) {
   if (typeof window === "undefined") return;
+  const now = Date.now();
   (window as DraftWindow)[MEMORY_DRAFT_KEY] = value;
+  (window as DraftWindow)[MEMORY_DRAFT_TS_KEY] = now;
   writeStorageValue(DRAFT_KEY, value);
+  writeTimestamp(DRAFT_TS_KEY, now);
 }
 
 function clearDraft() {
   if (typeof window === "undefined") return;
   (window as DraftWindow)[MEMORY_DRAFT_KEY] = "";
+  (window as DraftWindow)[MEMORY_DRAFT_TS_KEY] = Date.now();
   clearStorageValue(DRAFT_KEY);
+  clearTimestamp(DRAFT_TS_KEY);
 }
 
 function writeLastSentDraft(value: string) {
   if (typeof window === "undefined") return;
+  const now = Date.now();
   (window as DraftWindow)[MEMORY_LAST_SENT_KEY] = value;
+  (window as DraftWindow)[MEMORY_LAST_SENT_TS_KEY] = now;
   writeStorageValue(LAST_SENT_DRAFT_KEY, value);
+  writeTimestamp(LAST_SENT_DRAFT_TS_KEY, now);
 }
 
 function clearLastSentDraft() {
   if (typeof window === "undefined") return;
   (window as DraftWindow)[MEMORY_LAST_SENT_KEY] = "";
+  (window as DraftWindow)[MEMORY_LAST_SENT_TS_KEY] = Date.now();
   clearStorageValue(LAST_SENT_DRAFT_KEY);
+  clearTimestamp(LAST_SENT_DRAFT_TS_KEY);
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
@@ -90,10 +144,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   }, [input]);
 
-  // Persist draft so refresh/reload doesn't lose unsent text
+  // Keep the React ref current. Actual persistence happens on direct DOM/user
+  // input events below; that avoids a remount/programmatic empty state wiping a
+  // non-empty persisted draft during reload/auth/HMR turbulence.
   useEffect(() => {
     inputRef.current = input;
-    writeDraft(input);
   }, [input]);
 
   useEffect(() => {
@@ -104,13 +159,18 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       writeDraft(value);
     };
     const syncAfterDomMutation = () => window.setTimeout(syncFromDom, 0);
-    // Återställ utkast om storage har mer text än komponenten (t.ex. mobil bfcache, flikbyte, HMR)
+    // Återställ utkast om storage har mer text än komponenten (reload, auth-remount, bfcache, HMR)
     const restoreFromStorage = () => {
       const stored = readDraft();
-      if (stored && stored !== inputRef.current) {
+      const current = textareaRef.current?.value ?? inputRef.current;
+      if (stored && stored.length > current.length && stored !== current) {
         inputRef.current = stored;
         setInput(stored);
       }
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) flushDraft();
+      else restoreFromStorage();
     };
     const textarea = textareaRef.current;
     textarea?.addEventListener("input", syncFromDom);
@@ -121,10 +181,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     window.addEventListener("pagehide", flushDraft);
     window.addEventListener("pageshow", restoreFromStorage);
     window.addEventListener("focus", restoreFromStorage);
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) flushDraft();
-      else restoreFromStorage();
-    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
     import.meta.hot?.dispose(flushDraft);
     return () => {
       flushDraft();
@@ -136,6 +193,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       window.removeEventListener("pagehide", flushDraft);
       window.removeEventListener("pageshow", restoreFromStorage);
       window.removeEventListener("focus", restoreFromStorage);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
