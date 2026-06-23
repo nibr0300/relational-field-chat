@@ -2451,19 +2451,36 @@ function createChatStream(
   });
 }
 
+function joinAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+  const activeSignals = signals.filter(Boolean) as AbortSignal[];
+  if (activeSignals.length === 0) return undefined;
+  if (activeSignals.length === 1) return activeSignals[0];
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  for (const signal of activeSignals) {
+    if (signal.aborted) {
+      abort();
+      break;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  }
+  return controller.signal;
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, signal: joinAbortSignals([controller.signal, init.signal]) });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"): Promise<Response> {
+async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto", requestSignal?: AbortSignal): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+  if (requestSignal?.aborted) throw new DOMException("Request aborted", "AbortError");
 
   const body = JSON.stringify({
     model: "google/gemini-2.5-flash",
@@ -2480,6 +2497,7 @@ async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"):
       const response = await fetchWithTimeout(AI_GATEWAY_URL, {
         method: "POST",
         headers: aiGatewayHeaders(LOVABLE_API_KEY),
+        signal: requestSignal,
         body,
       }, AI_CONNECT_TIMEOUT_MS);
       if (!isRetryableGatewayStatus(response.status) || attempt === 2) return response;
