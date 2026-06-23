@@ -450,10 +450,26 @@ export default function Index() {
             }
           }
         },
-        onError: (err) => {
+        onError: async (err) => {
           streamFailed = err;
           toast.error(err);
           setIsLoading(false);
+          // Bevara partiellt svar i UI + DB så ingenting går förlorat vid reload
+          if (assistantSoFar && finalConvId) {
+            const partial = `${assistantSoFar}\n\n_[Avbrutet — säg "fortsätt" för att fortsätta från sista raden]_`;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant" && last !== WELCOME) {
+                return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: partial } : m));
+              }
+              return [...prev, { role: "assistant", content: partial }];
+            });
+            try {
+              await saveMessage(finalConvId, { role: "assistant", content: partial });
+            } catch (e) {
+              console.error("Failed to persist partial assistant message:", e);
+            }
+          }
         },
       });
       if (streamFailed) throw new Error(streamFailed);
