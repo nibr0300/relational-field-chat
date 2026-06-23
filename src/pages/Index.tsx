@@ -472,11 +472,14 @@ export default function Index() {
           }
         },
       });
-      if (streamFailed) throw new Error(streamFailed);
-    } catch {
-      toast.error("Kunde inte ansluta till RFA.");
+      // Om strömmen bröts efter att svar börjat synas har onError redan
+      // bevarat det partiella svaret. Då ska vi inte återställa det skickade
+      // meddelandet i inputfältet eller visa en andra generisk feltoast.
+      if (streamFailed && !assistantSoFar) throw new Error(streamFailed);
+    } catch (e) {
+      if (!streamFailed) toast.error("Kunde inte ansluta till RFA.");
       setIsLoading(false);
-      throw new Error("Kunde inte ansluta till RFA.");
+      throw e instanceof Error ? e : new Error("Kunde inte ansluta till RFA.");
     }
   };
 
