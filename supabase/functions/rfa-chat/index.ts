@@ -2106,9 +2106,19 @@ async function loadDreamResidue(userId: string | null | undefined): Promise<stri
     return "";
   }
 
-function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
+function createChatStream(
+  messages: any[],
+  conversationId?: string,
+  mirror = false,
+  userId?: string | null,
+  requestSignal?: AbortSignal,
+): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
+      if (requestSignal?.aborted) {
+        controller.close();
+        return;
+      }
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState(userId ?? null);
@@ -2343,7 +2353,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         // Multiple tool-call rounds so the model can open large archive files chunkwise before answering.
         for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
           const isFinalAllowedRound = round === MAX_TOOL_CALL_ROUNDS - 1;
-          const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto");
+          if (requestSignal?.aborted) break;
+          const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto", requestSignal);
 
           if (!response.ok || !response.body) {
             try { await response.body?.cancel(); } catch {}
@@ -2374,7 +2385,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 role: "user",
                 content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade. Börja inte om. Upprepa inte redan skriven text. Slutför den pågående sektionen och avsluta helheten komplett.]",
               });
-              const continuationResponse = await callAIRaw(conversation, "none");
+              if (requestSignal?.aborted) break;
+              const continuationResponse = await callAIRaw(conversation, "none", requestSignal);
               if (!continuationResponse.ok || !continuationResponse.body) break;
               const continuationResult = await consumeStream(continuationResponse, controller, true);
               accumulatedAnswerChars += continuationResult.content.length;
