@@ -1980,13 +1980,15 @@ Låt detta vara en kroppslig disposition — inte ett ämne att tala om.
 }
 // ───────────────────────────────────────────────────────────
 
-async function generateDraft(conversation: any[]): Promise<{ content: string; ok: boolean }> {
+async function generateDraft(conversation: any[], requestSignal?: AbortSignal): Promise<{ content: string; ok: boolean }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { content: "", ok: false };
+  if (requestSignal?.aborted) return { content: "", ok: false };
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
       headers: aiGatewayHeaders(LOVABLE_API_KEY),
+      signal: requestSignal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         stream: false,
@@ -2105,10 +2107,21 @@ async function loadDreamResidue(userId: string | null | undefined): Promise<stri
     console.error("loadDreamResidue error:", e);
     return "";
   }
+}
 
-function createChatStream(messages: any[], conversationId?: string, mirror = false, userId?: string | null): ReadableStream<Uint8Array> {
+function createChatStream(
+  messages: any[],
+  conversationId?: string,
+  mirror = false,
+  userId?: string | null,
+  requestSignal?: AbortSignal,
+): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async start(controller) {
+      if (requestSignal?.aborted) {
+        controller.close();
+        return;
+      }
       controller.enqueue(encoder.encode(": RFA CONNECTED\n\n"));
       try {
         const memoryBlock = await loadMemoryState(userId ?? null);
@@ -2319,7 +2332,7 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
               ? lastUser.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
               : "";
 
-          const draft = await generateDraft(conversation);
+          const draft = await generateDraft(conversation, requestSignal);
           if (draft.ok && draft.content) {
             const critique = await runMirrorReview(draft.content, userTurnText);
             if (critique) {
@@ -2343,7 +2356,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
         // Multiple tool-call rounds so the model can open large archive files chunkwise before answering.
         for (let round = 0; round < MAX_TOOL_CALL_ROUNDS; round++) {
           const isFinalAllowedRound = round === MAX_TOOL_CALL_ROUNDS - 1;
-          const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto");
+          if (requestSignal?.aborted) break;
+          const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto", requestSignal);
 
           if (!response.ok || !response.body) {
             try { await response.body?.cancel(); } catch {}
@@ -2374,7 +2388,8 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
                 role: "user",
                 content: "[Responsen avbröts tekniskt av tokenbudget. Fortsätt exakt där du slutade. Börja inte om. Upprepa inte redan skriven text. Slutför den pågående sektionen och avsluta helheten komplett.]",
               });
-              const continuationResponse = await callAIRaw(conversation, "none");
+              if (requestSignal?.aborted) break;
+              const continuationResponse = await callAIRaw(conversation, "none", requestSignal);
               if (!continuationResponse.ok || !continuationResponse.body) break;
               const continuationResult = await consumeStream(continuationResponse, controller, true);
               accumulatedAnswerChars += continuationResult.content.length;
@@ -2437,19 +2452,36 @@ function createChatStream(messages: any[], conversationId?: string, mirror = fal
   });
 }
 
+function joinAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
+  const activeSignals = signals.filter(Boolean) as AbortSignal[];
+  if (activeSignals.length === 0) return undefined;
+  if (activeSignals.length === 1) return activeSignals[0];
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  for (const signal of activeSignals) {
+    if (signal.aborted) {
+      abort();
+      break;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  }
+  return controller.signal;
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, signal: joinAbortSignals([controller.signal, init.signal]) });
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"): Promise<Response> {
+async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto", requestSignal?: AbortSignal): Promise<Response> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+  if (requestSignal?.aborted) throw new DOMException("Request aborted", "AbortError");
 
   const body = JSON.stringify({
     model: "google/gemini-2.5-flash",
@@ -2466,6 +2498,7 @@ async function callAIRaw(messages: any[], toolChoice: "auto" | "none" = "auto"):
       const response = await fetchWithTimeout(AI_GATEWAY_URL, {
         method: "POST",
         headers: aiGatewayHeaders(LOVABLE_API_KEY),
+        signal: requestSignal,
         body,
       }, AI_CONNECT_TIMEOUT_MS);
       if (!isRetryableGatewayStatus(response.status) || attempt === 2) return response;
@@ -2513,7 +2546,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(createChatStream(messages, conversationId, !!mirror, userId), {
+    return new Response(createChatStream(messages, conversationId, !!mirror, userId, req.signal), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
 

@@ -65,6 +65,7 @@ const MAX_TOTAL_CHARS = 110_000;
 const MAX_CONTEXT_MESSAGES = 30;
 const NEAR_FIELD_PROTECTED_TURNS = 6;
 const DIRECT_FILE_MARKER = "[DIREKT BIFOGAD FIL — HELTEXT]";
+const STREAM_STALL_TIMEOUT_MS = 75_000;
 
 function capText(text: string): string {
   if (text.includes(DIRECT_FILE_MARKER)) return text;
@@ -221,7 +222,24 @@ export async function streamChat({
   let receivedDoneSignal = false;
 
   while (!streamDone) {
-    const { done, value } = await reader.read();
+    let timeoutId: number | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(
+        () => reject(new Error("RFA svarade inte på över en minut. Strömmen sparades fram till sista synliga raden.")),
+        STREAM_STALL_TIMEOUT_MS,
+      );
+    });
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await Promise.race([reader.read(), timeout]);
+    } catch (error) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      onError(error instanceof Error ? error.message : "Svarströmmen stannade utan avslut.");
+      return;
+    } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    }
+    const { done, value } = chunk;
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
