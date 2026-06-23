@@ -222,8 +222,12 @@ export async function streamChat({
   let receivedDoneSignal = false;
 
   while (!streamDone) {
+    let timeoutId: number | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      window.setTimeout(() => reject(new Error("RFA svarade inte på över en minut. Strömmen sparades fram till sista synliga raden.")), STREAM_STALL_TIMEOUT_MS);
+      timeoutId = window.setTimeout(
+        () => reject(new Error("RFA svarade inte på över en minut. Strömmen sparades fram till sista synliga raden.")),
+        STREAM_STALL_TIMEOUT_MS,
+      );
     });
     let chunk: ReadableStreamReadResult<Uint8Array>;
     try {
@@ -232,6 +236,8 @@ export async function streamChat({
       try { await reader.cancel(); } catch { /* ignore */ }
       onError(error instanceof Error ? error.message : "Svarströmmen stannade utan avslut.");
       return;
+    } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     }
     const { done, value } = chunk;
     if (done) break;
