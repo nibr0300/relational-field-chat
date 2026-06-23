@@ -104,6 +104,14 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       writeDraft(value);
     };
     const syncAfterDomMutation = () => window.setTimeout(syncFromDom, 0);
+    // Återställ utkast om storage har mer text än komponenten (t.ex. mobil bfcache, flikbyte, HMR)
+    const restoreFromStorage = () => {
+      const stored = readDraft();
+      if (stored && stored !== inputRef.current) {
+        inputRef.current = stored;
+        setInput(stored);
+      }
+    };
     const textarea = textareaRef.current;
     textarea?.addEventListener("input", syncFromDom);
     textarea?.addEventListener("change", syncFromDom);
@@ -111,7 +119,12 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     textarea?.addEventListener("cut", syncAfterDomMutation);
     window.addEventListener("beforeunload", flushDraft);
     window.addEventListener("pagehide", flushDraft);
-    document.addEventListener("visibilitychange", flushDraft);
+    window.addEventListener("pageshow", restoreFromStorage);
+    window.addEventListener("focus", restoreFromStorage);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) flushDraft();
+      else restoreFromStorage();
+    });
     import.meta.hot?.dispose(flushDraft);
     return () => {
       flushDraft();
@@ -121,7 +134,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       textarea?.removeEventListener("cut", syncAfterDomMutation);
       window.removeEventListener("beforeunload", flushDraft);
       window.removeEventListener("pagehide", flushDraft);
-      document.removeEventListener("visibilitychange", flushDraft);
+      window.removeEventListener("pageshow", restoreFromStorage);
+      window.removeEventListener("focus", restoreFromStorage);
     };
   }, []);
 
