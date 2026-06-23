@@ -2107,6 +2107,7 @@ async function loadDreamResidue(userId: string | null | undefined): Promise<stri
     console.error("loadDreamResidue error:", e);
     return "";
   }
+}
 
 function createChatStream(
   messages: any[],
