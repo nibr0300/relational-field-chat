@@ -1980,13 +1980,15 @@ Låt detta vara en kroppslig disposition — inte ett ämne att tala om.
 }
 // ───────────────────────────────────────────────────────────
 
-async function generateDraft(conversation: any[]): Promise<{ content: string; ok: boolean }> {
+async function generateDraft(conversation: any[], requestSignal?: AbortSignal): Promise<{ content: string; ok: boolean }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { content: "", ok: false };
+  if (requestSignal?.aborted) return { content: "", ok: false };
   try {
     const resp = await fetchWithTimeout(AI_GATEWAY_URL, {
       method: "POST",
       headers: aiGatewayHeaders(LOVABLE_API_KEY),
+      signal: requestSignal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         stream: false,
@@ -2329,7 +2331,7 @@ function createChatStream(
               ? lastUser.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n")
               : "";
 
-          const draft = await generateDraft(conversation);
+          const draft = await generateDraft(conversation, requestSignal);
           if (draft.ok && draft.content) {
             const critique = await runMirrorReview(draft.content, userTurnText);
             if (critique) {
