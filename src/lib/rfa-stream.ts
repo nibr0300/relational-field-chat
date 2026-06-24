@@ -204,8 +204,10 @@ export async function streamChat({
     const data = await resp.json().catch(() => ({}));
     if ([502, 503, 504].includes(resp.status)) {
       onError("Tjänsten startar om. Försök igen om några sekunder.");
+    } else if (resp.status === 402 || data.error === "AI_CREDITS_EXHAUSTED") {
+      onError(data.message || "Arbetsytans AI-kreditgräns är nådd.", "AI_CREDITS_EXHAUSTED");
     } else {
-      onError(data.error || data.message || `Error ${resp.status}`);
+      onError(data.message || data.error || `Error ${resp.status}`, data.error);
     }
     return;
   }
