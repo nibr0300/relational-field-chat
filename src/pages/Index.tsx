@@ -5,6 +5,7 @@ import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ForkCompass } from "@/components/ForkCompass";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
+import { CreditLimitAlert } from "@/components/CreditLimitAlert";
 import { streamChat, type Msg, type Attachment, type PrmMeta } from "@/lib/rfa-stream";
 import { invokeRaap, shouldWearHat } from "@/lib/raap-store";
 import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
