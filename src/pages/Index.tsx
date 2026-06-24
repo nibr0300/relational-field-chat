@@ -5,6 +5,7 @@ import { ChatInput, type AttachedFile } from "@/components/ChatInput";
 import { ForkCompass } from "@/components/ForkCompass";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { MemoryPanel } from "@/components/MemoryPanel";
+import { CreditLimitAlert } from "@/components/CreditLimitAlert";
 import { streamChat, type Msg, type Attachment, type PrmMeta } from "@/lib/rfa-stream";
 import { invokeRaap, shouldWearHat } from "@/lib/raap-store";
 import { usePresenceMonitor } from "@/hooks/usePresenceMonitor";
@@ -72,6 +73,7 @@ export default function Index() {
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [creditAlert, setCreditAlert] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
 
@@ -450,9 +452,13 @@ export default function Index() {
             }
           }
         },
-        onError: async (err) => {
+        onError: async (err, code) => {
           streamFailed = err;
-          toast.error(err);
+          if (code === "AI_CREDITS_EXHAUSTED") {
+            setCreditAlert(err);
+          } else {
+            toast.error(err);
+          }
           setIsLoading(false);
           // Bevara partiellt svar i UI + DB så ingenting går förlorat vid reload
           if (assistantSoFar && finalConvId) {
@@ -526,6 +532,9 @@ export default function Index() {
             )}
           </div>
         </div>
+        {creditAlert && (
+          <CreditLimitAlert message={creditAlert} onDismiss={() => setCreditAlert(null)} />
+        )}
         {prmSignal?.prospective && <ForkCompass prospective={prmSignal.prospective} />}
         <ChatInput onSend={handleSend} disabled={isLoading} />
       </div>

@@ -149,7 +149,7 @@ export async function streamChat({
   mirror?: boolean;
   onDelta: (text: string) => void;
   onDone: () => void;
-  onError: (error: string) => void;
+  onError: (error: string, code?: string) => void;
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
   onPrmSignal?: (signal: PrmMeta) => void;
   onStatus?: (meta: StreamStatusMeta) => void;
@@ -204,8 +204,10 @@ export async function streamChat({
     const data = await resp.json().catch(() => ({}));
     if ([502, 503, 504].includes(resp.status)) {
       onError("Tjänsten startar om. Försök igen om några sekunder.");
+    } else if (resp.status === 402 || data.error === "AI_CREDITS_EXHAUSTED") {
+      onError(data.message || "Arbetsytans AI-kreditgräns är nådd.", "AI_CREDITS_EXHAUSTED");
     } else {
-      onError(data.error || data.message || `Error ${resp.status}`);
+      onError(data.message || data.error || `Error ${resp.status}`, data.error);
     }
     return;
   }
@@ -267,7 +269,7 @@ export async function streamChat({
           continue;
         }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.");
+          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
@@ -292,7 +294,7 @@ export async function streamChat({
         if (parsed.prm_meta && onPrmSignal) { onPrmSignal(parsed.prm_meta); continue; }
         if (parsed.status_meta && onStatus) { onStatus(parsed.status_meta); continue; }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.");
+          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
