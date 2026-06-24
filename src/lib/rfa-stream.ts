@@ -149,7 +149,7 @@ export async function streamChat({
   mirror?: boolean;
   onDelta: (text: string) => void;
   onDone: () => void;
-  onError: (error: string) => void;
+  onError: (error: string, code?: string) => void;
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
   onPrmSignal?: (signal: PrmMeta) => void;
   onStatus?: (meta: StreamStatusMeta) => void;
