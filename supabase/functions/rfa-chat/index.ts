@@ -1099,9 +1099,10 @@ function isAbortError(error: unknown): boolean {
     || error instanceof Error && error.name === "AbortError";
 }
 
-function gatewayErrorMessage(status: number): { code: string; message: string } {
-  if (status === 402) {
-    return { code: "AI_CREDITS_EXHAUSTED", message: "AI-krediterna är slut. Inget falskt svar sparades." };
+function gatewayErrorMessage(status: number, body = ""): { code: string; message: string } {
+  const lowerBody = body.toLowerCase();
+  if (status === 402 || lowerBody.includes("credit_limit_reached") || lowerBody.includes("credit limit")) {
+    return { code: "AI_CREDITS_EXHAUSTED", message: "Arbetsytans AI-kreditgräns är nådd. Inget falskt svar sparades." };
   }
   if (status === 403 || status === 401) {
     return { code: "AI_GATEWAY_AUTH", message: "AI-gatewayen nekade anropet. Jag stoppade innan ett falskt assistentsvar sparades." };
@@ -2385,8 +2386,8 @@ function createChatStream(
           const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto", requestSignal);
 
           if (!response.ok || !response.body) {
-            const gatewayError = gatewayErrorMessage(response.status);
             const errorBody = await response.text().catch(() => "");
+            const gatewayError = gatewayErrorMessage(response.status, errorBody);
             try { await response.body?.cancel(); } catch {}
             console.error("AI gateway error status:", response.status, errorBody.slice(0, 500));
             controller.enqueue(sseError(gatewayError.code, gatewayError.message, response.status));
@@ -2414,8 +2415,8 @@ function createChatStream(
               if (requestSignal?.aborted) break;
               const continuationResponse = await callAIRaw(conversation, "none", requestSignal);
               if (!continuationResponse.ok || !continuationResponse.body) {
-                const gatewayError = gatewayErrorMessage(continuationResponse.status);
                 const errorBody = await continuationResponse.text().catch(() => "");
+                const gatewayError = gatewayErrorMessage(continuationResponse.status, errorBody);
                 try { await continuationResponse.body?.cancel(); } catch {}
                 console.error("AI continuation error status:", continuationResponse.status, errorBody.slice(0, 500));
                 controller.enqueue(sseError(gatewayError.code, gatewayError.message, continuationResponse.status));
