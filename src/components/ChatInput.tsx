@@ -136,6 +136,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef(input);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -199,7 +200,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSubmit = async () => {
     const trimmed = input.trim();
-    if ((!trimmed && files.length === 0) || disabled) return;
+    if ((!trimmed && files.length === 0) || disabled || submittingRef.current) return;
+    submittingRef.current = true;
     const sentText = input;
     writeDraft(sentText);
     writeLastSentDraft(sentText);
@@ -214,6 +216,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     } catch {
       setInput(sentText);
       writeDraft(sentText);
+    } finally {
+      submittingRef.current = false;
     }
   };
 
