@@ -73,6 +73,7 @@ export default function Index() {
   const [prmSignal, setPrmSignal] = useState<PrmMeta | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [creditAlert, setCreditAlert] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
 
