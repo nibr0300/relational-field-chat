@@ -267,7 +267,7 @@ export async function streamChat({
           continue;
         }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.");
+          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
