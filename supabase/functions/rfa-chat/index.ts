@@ -1077,6 +1077,10 @@ function sseDone(): Uint8Array {
   return encoder.encode("data: [DONE]\n\n");
 }
 
+function sseError(code: string, message: string, status?: number): Uint8Array {
+  return sseJson({ error: code, message, status });
+}
+
 function isLengthFinish(reason: string | null): boolean {
   const value = String(reason ?? "").toLowerCase();
   return value === "length" || value === "max_tokens" || value === "max_output_tokens" || value === "max_tokens_reached";
@@ -1090,10 +1094,31 @@ function isRetryableGatewayStatus(status: number): boolean {
   return status === 500 || status === 502 || status === 503 || status === 504;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError"
+    || error instanceof Error && error.name === "AbortError";
+}
+
+function gatewayErrorMessage(status: number): { code: string; message: string } {
+  if (status === 402) {
+    return { code: "AI_CREDITS_EXHAUSTED", message: "AI-krediterna är slut. Inget falskt svar sparades." };
+  }
+  if (status === 403 || status === 401) {
+    return { code: "AI_GATEWAY_AUTH", message: "AI-gatewayen nekade anropet. Jag stoppade innan ett falskt assistentsvar sparades." };
+  }
+  if (status === 429) {
+    return { code: "AI_RATE_LIMITED", message: "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund." };
+  }
+  if (status >= 500) {
+    return { code: "AI_GATEWAY_UNAVAILABLE", message: "AI-gatewayen är tillfälligt otillgänglig. Jag stoppade innan ett falskt assistentsvar sparades." };
+  }
+  return { code: "AI_GATEWAY_ERROR", message: `AI-gatewayen avvisade anropet (${status}). Inget falskt svar sparades.` };
+}
+
 function createErrorStream(message: string): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
-      controller.enqueue(sseJson({ choices: [{ delta: { content: message } }] }));
+      controller.enqueue(sseError("RFA_INTERNAL_ERROR", message));
       controller.enqueue(sseDone());
       controller.close();
     },
@@ -2360,13 +2385,11 @@ function createChatStream(
           const response = await callAIRaw(conversation, isFinalAllowedRound ? "none" : "auto", requestSignal);
 
           if (!response.ok || !response.body) {
+            const gatewayError = gatewayErrorMessage(response.status);
+            const errorBody = await response.text().catch(() => "");
             try { await response.body?.cancel(); } catch {}
-            console.error("AI gateway error status:", response.status);
-            controller.enqueue(sseJson({ choices: [{ delta: { content: response.status === 429
-              ? "AI-tjänsten är tillfälligt belastad. Försök igen om en liten stund."
-              : response.status === 402
-                ? "AI-krediterna är slut. Fyll på innan nästa körning."
-                : "AI-gatewayen svarade inte stabilt. Jag avbröt säkert innan chatten kraschade." } }] }));
+            console.error("AI gateway error status:", response.status, errorBody.slice(0, 500));
+            controller.enqueue(sseError(gatewayError.code, gatewayError.message, response.status));
             break;
           }
 
@@ -2390,7 +2413,14 @@ function createChatStream(
               });
               if (requestSignal?.aborted) break;
               const continuationResponse = await callAIRaw(conversation, "none", requestSignal);
-              if (!continuationResponse.ok || !continuationResponse.body) break;
+              if (!continuationResponse.ok || !continuationResponse.body) {
+                const gatewayError = gatewayErrorMessage(continuationResponse.status);
+                const errorBody = await continuationResponse.text().catch(() => "");
+                try { await continuationResponse.body?.cancel(); } catch {}
+                console.error("AI continuation error status:", continuationResponse.status, errorBody.slice(0, 500));
+                controller.enqueue(sseError(gatewayError.code, gatewayError.message, continuationResponse.status));
+                break;
+              }
               const continuationResult = await consumeStream(continuationResponse, controller, true);
               accumulatedAnswerChars += continuationResult.content.length;
               if (continuationResult.content) conversation.push({ role: "assistant", content: continuationResult.content });
@@ -2443,8 +2473,12 @@ function createChatStream(
         controller.enqueue(sseDone());
         controller.close();
       } catch (e) {
+        if (requestSignal?.aborted || isAbortError(e)) {
+          controller.close();
+          return;
+        }
         console.error("rfa-chat stream error:", e instanceof Error ? e.stack : e);
-        controller.enqueue(sseJson({ choices: [{ delta: { content: "RFA-funktionen fångade ett internt fel och höll sessionen vid liv." } }] }));
+        controller.enqueue(sseError("RFA_INTERNAL_ERROR", "RFA-funktionen fångade ett internt fel. Inget falskt svar sparades."));
         controller.enqueue(sseDone());
         controller.close();
       }
