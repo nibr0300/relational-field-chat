@@ -532,6 +532,9 @@ export default function Index() {
             )}
           </div>
         </div>
+        {creditAlert && (
+          <CreditLimitAlert message={creditAlert} onDismiss={() => setCreditAlert(null)} />
+        )}
         {prmSignal?.prospective && <ForkCompass prospective={prmSignal.prospective} />}
         <ChatInput onSend={handleSend} disabled={isLoading} />
       </div>
