@@ -292,7 +292,7 @@ export async function streamChat({
         if (parsed.prm_meta && onPrmSignal) { onPrmSignal(parsed.prm_meta); continue; }
         if (parsed.status_meta && onStatus) { onStatus(parsed.status_meta); continue; }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.");
+          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
