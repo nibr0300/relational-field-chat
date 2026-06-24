@@ -452,9 +452,13 @@ export default function Index() {
             }
           }
         },
-        onError: async (err) => {
+        onError: async (err, code) => {
           streamFailed = err;
-          toast.error(err);
+          if (code === "AI_CREDITS_EXHAUSTED") {
+            setCreditAlert(err);
+          } else {
+            toast.error(err);
+          }
           setIsLoading(false);
           // Bevara partiellt svar i UI + DB så ingenting går förlorat vid reload
           if (assistantSoFar && finalConvId) {
