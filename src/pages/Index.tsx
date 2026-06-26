@@ -35,9 +35,17 @@ const WELCOME: Msg = {
 
 const LAST_ACTIVE_CONVERSATION_KEY = "rfa-active-conversation-id";
 const MESSAGE_CHECKPOINT_KEY = "rfa-visible-message-checkpoint";
+const STREAM_RECOVERY_KEY = "rfa-stream-recovery-checkpoint";
 const DIRECT_FILE_TEXT_LIMIT = 900_000;
+const STREAM_RECOVERY_DEBOUNCE_MS = 900;
 
 type MessageCheckpoint = { conversationId: string; updatedAt: number; messages: Msg[] };
+type StreamRecoveryCheckpoint = {
+  conversationId: string;
+  updatedAt: number;
+  userMessage: Msg;
+  assistantContent: string;
+};
 
 function safeCheckpointMessages(messages: Msg[]): Msg[] {
   return messages.slice(-30).map((m) => ({ ...m, content: m.content.slice(0, 220_000) }));
@@ -61,6 +69,39 @@ function writeMessageCheckpoint(conversationId: string, messages: Msg[]) {
   try { sessionStorage.setItem(MESSAGE_CHECKPOINT_KEY, payload); } catch { /* ignore storage errors */ }
 }
 
+function readStreamRecoveryCheckpoint(conversationId: string): StreamRecoveryCheckpoint | null {
+  try {
+    const raw = sessionStorage.getItem(STREAM_RECOVERY_KEY) ?? localStorage.getItem(STREAM_RECOVERY_KEY);
+    if (!raw) return null;
+    const checkpoint = JSON.parse(raw) as StreamRecoveryCheckpoint;
+    if (checkpoint.conversationId !== conversationId) return null;
+    if (Date.now() - checkpoint.updatedAt > 12 * 60 * 60 * 1000) return null;
+    if (!checkpoint.assistantContent?.trim()) return null;
+    return checkpoint;
+  } catch { return null; }
+}
+
+function writeStreamRecoveryCheckpoint(conversationId: string, userMessage: Msg, assistantContent: string) {
+  if (!assistantContent.trim()) return;
+  const payload = JSON.stringify({
+    conversationId,
+    updatedAt: Date.now(),
+    userMessage: { ...userMessage, content: userMessage.content.slice(0, 220_000) },
+    assistantContent: assistantContent.slice(0, 220_000),
+  } satisfies StreamRecoveryCheckpoint);
+  try { sessionStorage.setItem(STREAM_RECOVERY_KEY, payload); } catch { /* ignore storage errors */ }
+  try { localStorage.setItem(STREAM_RECOVERY_KEY, payload); } catch { /* ignore storage errors */ }
+}
+
+function clearStreamRecoveryCheckpoint(conversationId: string) {
+  try {
+    const raw = sessionStorage.getItem(STREAM_RECOVERY_KEY) ?? localStorage.getItem(STREAM_RECOVERY_KEY);
+    if (raw && (JSON.parse(raw) as StreamRecoveryCheckpoint).conversationId !== conversationId) return;
+  } catch { /* ignore parse errors and clear below */ }
+  try { sessionStorage.removeItem(STREAM_RECOVERY_KEY); } catch { /* ignore storage errors */ }
+  try { localStorage.removeItem(STREAM_RECOVERY_KEY); } catch { /* ignore storage errors */ }
+}
+
 export default function Index() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -74,8 +115,12 @@ export default function Index() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
   const [creditAlert, setCreditAlert] = useState<string | null>(null);
+  const [presencePausedUntil, setPresencePausedUntil] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
+  const activeStreamRef = useRef(false);
+  const lastStreamFailureAtRef = useRef(0);
+  const streamRecoveryTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     activeConvIdRef.current = activeConvId;
@@ -90,15 +135,16 @@ export default function Index() {
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
   const handleInitiative = useCallback((text: string, level: number) => {
+    if (activeStreamRef.current || Date.now() < presencePausedUntil) return;
     setMessages((prev) => [
       ...prev,
       { role: "assistant", content: `🌙 _[Initiativ · nivå ${level}]_\n\n${text}` },
     ]);
-  }, []);
+  }, [presencePausedUntil]);
 
   const { reset: resetPresence } = usePresenceMonitor({
     conversationId: activeConvId,
-    enabled: !!activeConvId && !isLoading,
+    enabled: !!activeConvId && !isLoading && !activeStreamRef.current && Date.now() >= presencePausedUntil,
     onInitiative: handleInitiative,
   });
 
@@ -172,7 +218,18 @@ export default function Index() {
           try {
             const msgs = await loadMessages(savedConversationId);
             const checkpoint = readMessageCheckpoint(savedConversationId);
-            if (!cancelled) setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
+            if (!cancelled) {
+              const recovered = readStreamRecoveryCheckpoint(savedConversationId);
+              if (recovered) {
+                setMessages([
+                  ...(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]),
+                  { role: "assistant", content: `${recovered.assistantContent}\n\n_[Lokalt återställd stream — svaret hann synas men inte sparas komplett innan avbrottet]_` },
+                ]);
+                toast.message("Återställde ett osparat AI-svar från lokal stream-checkpoint.");
+              } else {
+                setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
+              }
+            }
           } catch (err) {
             console.error("Kunde inte återställa aktiv konversation:", err);
             const checkpoint = readMessageCheckpoint(savedConversationId);
@@ -231,7 +288,12 @@ export default function Index() {
     try {
       const msgs = await loadMessages(id);
       const checkpoint = readMessageCheckpoint(id);
-      setMessages(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]);
+      const recovered = readStreamRecoveryCheckpoint(id);
+      const baseMessages = msgs.length > 0 ? msgs : checkpoint ?? [WELCOME];
+      setMessages(recovered ? [
+        ...baseMessages,
+        { role: "assistant", content: `${recovered.assistantContent}\n\n_[Lokalt återställd stream — svaret hann synas men inte sparas komplett innan avbrottet]_` },
+      ] : baseMessages);
     } catch {
       const checkpoint = readMessageCheckpoint(id);
       if (checkpoint) setMessages(checkpoint);
@@ -407,6 +469,13 @@ export default function Index() {
 
     const upsert = (chunk: string) => {
       assistantSoFar += chunk;
+      if (finalConvId) {
+        if (streamRecoveryTimerRef.current) window.clearTimeout(streamRecoveryTimerRef.current);
+        streamRecoveryTimerRef.current = window.setTimeout(() => {
+          writeStreamRecoveryCheckpoint(finalConvId, userMsg, assistantSoFar);
+          streamRecoveryTimerRef.current = null;
+        }, STREAM_RECOVERY_DEBOUNCE_MS);
+      }
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant" && prev.length > 1 && last !== WELCOME) {
@@ -419,6 +488,8 @@ export default function Index() {
     let mirrorMeta: { rounds: number; reviewer: string; ms: number } | null = null;
     let streamFailed: string | null = null;
     try {
+      activeStreamRef.current = true;
+      setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
       await streamChat({
         messages: allMessages,
         conversationId: finalConvId,
@@ -444,9 +515,16 @@ export default function Index() {
         },
         onDone: async () => {
           setIsLoading(false);
+          activeStreamRef.current = false;
+          setPresencePausedUntil(Date.now() + 60 * 1000);
+          if (streamRecoveryTimerRef.current) {
+            window.clearTimeout(streamRecoveryTimerRef.current);
+            streamRecoveryTimerRef.current = null;
+          }
           if (assistantSoFar && finalConvId) {
             try {
               await saveMessage(finalConvId, { role: "assistant", content: assistantSoFar });
+              clearStreamRecoveryCheckpoint(finalConvId);
             } catch (e) {
               console.error("Failed to save assistant message:", e);
             }
@@ -454,6 +532,13 @@ export default function Index() {
         },
         onError: async (err, code) => {
           streamFailed = err;
+          activeStreamRef.current = false;
+          lastStreamFailureAtRef.current = Date.now();
+          setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
+          if (streamRecoveryTimerRef.current) {
+            window.clearTimeout(streamRecoveryTimerRef.current);
+            streamRecoveryTimerRef.current = null;
+          }
           if (code === "AI_CREDITS_EXHAUSTED") {
             setCreditAlert(err);
           } else {
@@ -462,6 +547,7 @@ export default function Index() {
           setIsLoading(false);
           // Bevara partiellt svar i UI + DB så ingenting går förlorat vid reload
           if (assistantSoFar && finalConvId) {
+            writeStreamRecoveryCheckpoint(finalConvId, userMsg, assistantSoFar);
             const partial = `${assistantSoFar}\n\n_[Avbrutet — säg "fortsätt" för att fortsätta från sista raden]_`;
             setMessages((prev) => {
               const last = prev[prev.length - 1];
@@ -472,6 +558,7 @@ export default function Index() {
             });
             try {
               await saveMessage(finalConvId, { role: "assistant", content: partial });
+              clearStreamRecoveryCheckpoint(finalConvId);
             } catch (e) {
               console.error("Failed to persist partial assistant message:", e);
             }
@@ -483,6 +570,8 @@ export default function Index() {
       // meddelandet i inputfältet eller visa en andra generisk feltoast.
       if (streamFailed && !assistantSoFar) throw new Error(streamFailed);
     } catch (e) {
+      activeStreamRef.current = false;
+      setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
       if (!streamFailed) toast.error("Kunde inte ansluta till RFA.");
       setIsLoading(false);
       throw e instanceof Error ? e : new Error("Kunde inte ansluta till RFA.");
