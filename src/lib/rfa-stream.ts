@@ -148,8 +148,8 @@ export async function streamChat({
   conversationId?: string;
   mirror?: boolean;
   onDelta: (text: string) => void;
-  onDone: () => void;
-  onError: (error: string, code?: string) => void;
+  onDone: () => void | Promise<void>;
+  onError: (error: string, code?: string) => void | Promise<void>;
   onMirrorMeta?: (meta: { rounds: number; reviewer: string; ms: number }) => void;
   onPrmSignal?: (signal: PrmMeta) => void;
   onStatus?: (meta: StreamStatusMeta) => void;
@@ -196,24 +196,24 @@ export async function streamChat({
 
 
   if (!resp) {
-    onError(lastErr instanceof Error ? lastErr.message : "Nätverksfel");
+    await onError(lastErr instanceof Error ? lastErr.message : "Nätverksfel");
     return;
   }
 
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     if ([502, 503, 504].includes(resp.status)) {
-      onError("Tjänsten startar om. Försök igen om några sekunder.");
+      await onError("Tjänsten startar om. Försök igen om några sekunder.");
     } else if (resp.status === 402 || data.error === "AI_CREDITS_EXHAUSTED") {
-      onError(data.message || "Arbetsytans AI-kreditgräns är nådd.", "AI_CREDITS_EXHAUSTED");
+      await onError(data.message || "Arbetsytans AI-kreditgräns är nådd.", "AI_CREDITS_EXHAUSTED");
     } else {
-      onError(data.message || data.error || `Error ${resp.status}`, data.error);
+      await onError(data.message || data.error || `Error ${resp.status}`, data.error);
     }
     return;
   }
 
   if (!resp.body) {
-    onError("No response stream");
+    await onError("No response stream");
     return;
   }
 
@@ -236,7 +236,7 @@ export async function streamChat({
       chunk = await Promise.race([reader.read(), timeout]);
     } catch (error) {
       try { await reader.cancel(); } catch { /* ignore */ }
-      onError(error instanceof Error ? error.message : "Svarströmmen stannade utan avslut.");
+      await onError(error instanceof Error ? error.message : "Svarströmmen stannade utan avslut.");
       return;
     } finally {
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
@@ -269,7 +269,7 @@ export async function streamChat({
           continue;
         }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
+          await onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
@@ -294,7 +294,7 @@ export async function streamChat({
         if (parsed.prm_meta && onPrmSignal) { onPrmSignal(parsed.prm_meta); continue; }
         if (parsed.status_meta && onStatus) { onStatus(parsed.status_meta); continue; }
         if (parsed.error) {
-          onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
+          await onError(parsed.message || parsed.error || "AI-anropet avbröts innan ett svar kunde skapas.", parsed.error);
           return;
         }
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
@@ -304,9 +304,9 @@ export async function streamChat({
   }
 
   if (!receivedDoneSignal) {
-    onError("Svarströmmen bröts innan RFA hann avsluta. Skicka igen eller be RFA fortsätta från sista synliga raden.");
+    await onError("Svarströmmen bröts innan RFA hann avsluta. Skicka igen eller be RFA fortsätta från sista synliga raden.");
     return;
   }
 
-  onDone();
+  await onDone();
 }
