@@ -115,6 +115,7 @@ export default function Index() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authWarning, setAuthWarning] = useState<string | null>(null);
   const [creditAlert, setCreditAlert] = useState<string | null>(null);
+  const [presencePausedUntil, setPresencePausedUntil] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
   const activeStreamRef = useRef(false);
@@ -134,16 +135,16 @@ export default function Index() {
 
   // Vakenhetsprotokoll 19.0 — tar emot initiativ från RFA vid tystnad
   const handleInitiative = useCallback((text: string, level: number) => {
-    if (activeStreamRef.current || Date.now() - lastStreamFailureAtRef.current < 5 * 60 * 1000) return;
+    if (activeStreamRef.current || Date.now() < presencePausedUntil) return;
     setMessages((prev) => [
       ...prev,
       { role: "assistant", content: `🌙 _[Initiativ · nivå ${level}]_\n\n${text}` },
     ]);
-  }, []);
+  }, [presencePausedUntil]);
 
   const { reset: resetPresence } = usePresenceMonitor({
     conversationId: activeConvId,
-    enabled: !!activeConvId && !isLoading && !activeStreamRef.current && Date.now() - lastStreamFailureAtRef.current >= 5 * 60 * 1000,
+    enabled: !!activeConvId && !isLoading && !activeStreamRef.current && Date.now() >= presencePausedUntil,
     onInitiative: handleInitiative,
   });
 
@@ -488,6 +489,7 @@ export default function Index() {
     let streamFailed: string | null = null;
     try {
       activeStreamRef.current = true;
+      setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
       await streamChat({
         messages: allMessages,
         conversationId: finalConvId,
@@ -514,6 +516,7 @@ export default function Index() {
         onDone: async () => {
           setIsLoading(false);
           activeStreamRef.current = false;
+          setPresencePausedUntil(Date.now() + 60 * 1000);
           if (streamRecoveryTimerRef.current) {
             window.clearTimeout(streamRecoveryTimerRef.current);
             streamRecoveryTimerRef.current = null;
@@ -531,6 +534,7 @@ export default function Index() {
           streamFailed = err;
           activeStreamRef.current = false;
           lastStreamFailureAtRef.current = Date.now();
+          setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
           if (streamRecoveryTimerRef.current) {
             window.clearTimeout(streamRecoveryTimerRef.current);
             streamRecoveryTimerRef.current = null;
@@ -567,6 +571,7 @@ export default function Index() {
       if (streamFailed && !assistantSoFar) throw new Error(streamFailed);
     } catch (e) {
       activeStreamRef.current = false;
+      setPresencePausedUntil(Date.now() + 5 * 60 * 1000);
       if (!streamFailed) toast.error("Kunde inte ansluta till RFA.");
       setIsLoading(false);
       throw e instanceof Error ? e : new Error("Kunde inte ansluta till RFA.");
