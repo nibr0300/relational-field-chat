@@ -295,23 +295,23 @@ export default function Index() {
       setConversations(convs);
 
       // Upptäck att en ANNAN konversation nyligen uppdaterats på en annan enhet.
-      const now = Date.now();
       const activeConv = convs.find((c) => c.id === id);
       const activeUpdated = activeConv ? new Date(activeConv.updated_at).getTime() : 0;
-      const newerElsewhere = convs.find((c) => {
-        if (c.id === id) return false;
-        const t = new Date(c.updated_at).getTime();
-        return t > activeUpdated && now - t < 15 * 60 * 1000;
-      });
-      if (newerElsewhere && lastCrossDeviceNoticeRef.current !== newerElsewhere.updated_at) {
-        lastCrossDeviceNoticeRef.current = newerElsewhere.updated_at;
-        toast.message(`En annan enhet fortsatte i "${newerElsewhere.title.slice(0, 40)}…"`, {
-          action: {
-            label: "Öppna",
-            onClick: () => { void handleSelectConversation(newerElsewhere.id); },
-          },
-          duration: 12_000,
-        });
+      // Servern sorterar på updated_at desc → första posten är alltid den senast rörda.
+      const newest = convs[0];
+      const newestT = newest ? new Date(newest.updated_at).getTime() : 0;
+      if (newest && newest.id !== id && newestT > activeUpdated) {
+        const noticeKey = `${newest.id}:${newest.updated_at}`;
+        if (lastCrossDeviceNoticeRef.current !== noticeKey) {
+          lastCrossDeviceNoticeRef.current = noticeKey;
+          toast.message(`En annan enhet fortsatte i "${newest.title.slice(0, 40)}…"`, {
+            action: {
+              label: "Öppna",
+              onClick: () => { void handleSelectConversation(newest.id); },
+            },
+            duration: 20_000,
+          });
+        }
       }
 
       if (!id) return;
