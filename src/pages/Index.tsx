@@ -212,14 +212,31 @@ export default function Index() {
 
       if (!activeConvIdRef.current) {
         const savedConversationId = localStorage.getItem(LAST_ACTIVE_CONVERSATION_KEY);
-        if (savedConversationId && convs.some((c) => c.id === savedConversationId)) {
-          activeConvIdRef.current = savedConversationId;
-          setActiveConvId(savedConversationId);
+        const savedConversation = savedConversationId ? convs.find((c) => c.id === savedConversationId) : null;
+        const newestConversation = convs[0] ?? null;
+        const savedUpdatedAt = savedConversation ? new Date(savedConversation.updated_at).getTime() : 0;
+        const newestUpdatedAt = newestConversation ? new Date(newestConversation.updated_at).getTime() : 0;
+        const serverHasNewerConversation =
+          !!savedConversation &&
+          !!newestConversation &&
+          newestConversation.id !== savedConversation.id &&
+          newestUpdatedAt > savedUpdatedAt;
+        const targetConversationId = serverHasNewerConversation
+          ? newestConversation.id
+          : savedConversation?.id ?? null;
+
+        if (targetConversationId) {
+          activeConvIdRef.current = targetConversationId;
+          setActiveConvId(targetConversationId);
+          localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, targetConversationId);
           try {
-            const msgs = await loadMessages(savedConversationId);
-            const checkpoint = readMessageCheckpoint(savedConversationId);
+            const msgs = await loadMessages(targetConversationId);
+            const checkpoint = readMessageCheckpoint(targetConversationId);
             if (!cancelled) {
-              const recovered = readStreamRecoveryCheckpoint(savedConversationId);
+              if (serverHasNewerConversation) {
+                toast.message(`Öppnade senaste serversessionen: "${newestConversation.title.slice(0, 48)}…"`);
+              }
+              const recovered = readStreamRecoveryCheckpoint(targetConversationId);
               if (recovered) {
                 setMessages([
                   ...(msgs.length > 0 ? msgs : checkpoint ?? [WELCOME]),
@@ -232,7 +249,7 @@ export default function Index() {
             }
           } catch (err) {
             console.error("Kunde inte återställa aktiv konversation:", err);
-            const checkpoint = readMessageCheckpoint(savedConversationId);
+            const checkpoint = readMessageCheckpoint(targetConversationId);
             if (!cancelled && checkpoint) setMessages(checkpoint);
             else localStorage.removeItem(LAST_ACTIVE_CONVERSATION_KEY);
           }
