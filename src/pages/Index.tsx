@@ -234,7 +234,7 @@ export default function Index() {
             const checkpoint = readMessageCheckpoint(targetConversationId);
             if (!cancelled) {
               if (serverHasNewerConversation) {
-                toast.message(`Öppnade senaste serversessionen: "${newestConversation.title.slice(0, 48)}…"`);
+                toast.message(`Öppnade senaste serversessionen: "${newestConversation?.title.slice(0, 48) ?? "senaste konversation"}…"`);
               }
               const recovered = readStreamRecoveryCheckpoint(targetConversationId);
               if (recovered) {
