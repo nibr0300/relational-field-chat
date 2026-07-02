@@ -322,24 +322,15 @@ export default function Index() {
       const convs = await listConversations();
       setConversations(convs);
 
-      // Upptäck att en ANNAN konversation nyligen uppdaterats på en annan enhet.
+      // Auto-switch till nyaste serversession om en annan enhet fortsatt där.
+      // Ingen toast — bytet sker tyst och direkt.
       const activeConv = convs.find((c) => c.id === id);
       const activeUpdated = activeConv ? new Date(activeConv.updated_at).getTime() : 0;
-      // Servern sorterar på updated_at desc → första posten är alltid den senast rörda.
       const newest = convs[0];
       const newestT = newest ? new Date(newest.updated_at).getTime() : 0;
       if (newest && newest.id !== id && newestT > activeUpdated) {
-        const noticeKey = `${newest.id}:${newest.updated_at}`;
-        if (lastCrossDeviceNoticeRef.current !== noticeKey) {
-          lastCrossDeviceNoticeRef.current = noticeKey;
-          toast.message(`En annan enhet fortsatte i "${newest.title.slice(0, 40)}…"`, {
-            action: {
-              label: "Öppna",
-              onClick: () => { void handleSelectConversation(newest.id); },
-            },
-            duration: 20_000,
-          });
-        }
+        await handleSelectConversation(newest.id);
+        return;
       }
 
       if (!id) return;
