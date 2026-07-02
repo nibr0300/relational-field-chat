@@ -233,20 +233,7 @@ export default function Index() {
             const msgs = await loadMessages(targetConversationId);
             const checkpoint = readMessageCheckpoint(targetConversationId);
             if (!cancelled) {
-              if (serverHasNewerConversation && savedConversation) {
-                const savedId = savedConversation.id;
-                const savedTitle = savedConversation.title;
-                toast.message(
-                  `Bytte till nyaste serversessionen: "${newestConversation?.title.slice(0, 48) ?? "senaste konversation"}…"`,
-                  {
-                    action: {
-                      label: `Tillbaka till "${savedTitle.slice(0, 24)}…"`,
-                      onClick: () => { void handleSelectConversation(savedId); },
-                    },
-                    duration: 30_000,
-                  },
-                );
-              }
+              // Tyst auto-switch — ingen toast. Den nyaste serversessionen öppnas direkt.
               const recovered = readStreamRecoveryCheckpoint(targetConversationId);
               if (recovered) {
                 setMessages([
