@@ -281,6 +281,64 @@ export default function Index() {
     setConversations(convs);
   }, []);
 
+  // ─── Cross-device sync ───
+  // När fliken/appen får fokus igen (t.ex. användaren skiftar från mobil till PC):
+  // hämta färsk konversationslista och ladda om aktiv konversation från servern,
+  // så att meddelanden skickade från en annan enhet dyker upp.
+  const reloadActiveFromServer = useCallback(async () => {
+    if (activeStreamRef.current || isLoading) return;
+    const id = activeConvIdRef.current;
+    try {
+      await refreshConversations();
+      if (!id) return;
+      const msgs = await loadMessages(id);
+      if (msgs.length === 0) return;
+      setMessages((prev) => {
+        // Byt bara om servern faktiskt har fler eller nyare meddelanden.
+        const lastServer = msgs[msgs.length - 1];
+        const lastLocal = prev[prev.length - 1];
+        const serverIsNewer =
+          msgs.length > prev.length ||
+          (lastServer && lastLocal && (lastServer.content !== lastLocal.content || lastServer.role !== lastLocal.role));
+        return serverIsNewer ? msgs : prev;
+      });
+    } catch (e) {
+      console.warn("cross-device sync skipped:", e);
+    }
+  }, [isLoading, refreshConversations]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reloadActiveFromServer();
+    };
+    const onFocus = () => { void reloadActiveFromServer(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    // Polling-fallback var 45:e sekund när fliken är synlig
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void reloadActiveFromServer();
+    }, 45_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(poll);
+    };
+  }, [reloadActiveFromServer]);
+
+  // Realtime: när nya rader skrivs i `messages` för aktiv konversation, dra om från server.
+  useEffect(() => {
+    if (!activeConvId) return;
+    const channel = supabase
+      .channel(`messages-${activeConvId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeConvId}` },
+        () => { void reloadActiveFromServer(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeConvId, reloadActiveFromServer]);
+
   const handleSelectConversation = useCallback(async (id: string) => {
     localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, id);
     setActiveConvId(id);
