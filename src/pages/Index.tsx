@@ -285,16 +285,39 @@ export default function Index() {
   // När fliken/appen får fokus igen (t.ex. användaren skiftar från mobil till PC):
   // hämta färsk konversationslista och ladda om aktiv konversation från servern,
   // så att meddelanden skickade från en annan enhet dyker upp.
+  const lastCrossDeviceNoticeRef = useRef<string | null>(null);
+
   const reloadActiveFromServer = useCallback(async () => {
     if (activeStreamRef.current || isLoading) return;
     const id = activeConvIdRef.current;
     try {
-      await refreshConversations();
+      const convs = await listConversations();
+      setConversations(convs);
+
+      // Upptäck att en ANNAN konversation nyligen uppdaterats på en annan enhet.
+      const now = Date.now();
+      const activeConv = convs.find((c) => c.id === id);
+      const activeUpdated = activeConv ? new Date(activeConv.updated_at).getTime() : 0;
+      const newerElsewhere = convs.find((c) => {
+        if (c.id === id) return false;
+        const t = new Date(c.updated_at).getTime();
+        return t > activeUpdated && now - t < 15 * 60 * 1000;
+      });
+      if (newerElsewhere && lastCrossDeviceNoticeRef.current !== newerElsewhere.updated_at) {
+        lastCrossDeviceNoticeRef.current = newerElsewhere.updated_at;
+        toast.message(`En annan enhet fortsatte i "${newerElsewhere.title.slice(0, 40)}…"`, {
+          action: {
+            label: "Öppna",
+            onClick: () => { void handleSelectConversation(newerElsewhere.id); },
+          },
+          duration: 12_000,
+        });
+      }
+
       if (!id) return;
       const msgs = await loadMessages(id);
       if (msgs.length === 0) return;
       setMessages((prev) => {
-        // Byt bara om servern faktiskt har fler eller nyare meddelanden.
         const lastServer = msgs[msgs.length - 1];
         const lastLocal = prev[prev.length - 1];
         const serverIsNewer =
@@ -305,7 +328,9 @@ export default function Index() {
     } catch (e) {
       console.warn("cross-device sync skipped:", e);
     }
-  }, [isLoading, refreshConversations]);
+    // handleSelectConversation is stable via useCallback; deps kept minimal to avoid churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   useEffect(() => {
     const onVisible = () => {
