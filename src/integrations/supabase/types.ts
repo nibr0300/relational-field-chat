@@ -436,6 +436,63 @@ export type Database = {
           },
         ]
       }
+      jacobian_analyses: {
+        Row: {
+          chosen_variant_index: number | null
+          conversation_id: string | null
+          created_at: string
+          duration_ms: number | null
+          epistemic_nudge: string | null
+          f_z: number | null
+          fork_type: string | null
+          gate_decision: string | null
+          gradients: Json
+          id: string
+          model_used: string | null
+          nudge_line: string | null
+          operator_nudge: Json | null
+          trigger: string
+          user_id: string
+          variants: Json
+        }
+        Insert: {
+          chosen_variant_index?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          epistemic_nudge?: string | null
+          f_z?: number | null
+          fork_type?: string | null
+          gate_decision?: string | null
+          gradients?: Json
+          id?: string
+          model_used?: string | null
+          nudge_line?: string | null
+          operator_nudge?: Json | null
+          trigger: string
+          user_id: string
+          variants?: Json
+        }
+        Update: {
+          chosen_variant_index?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          epistemic_nudge?: string | null
+          f_z?: number | null
+          fork_type?: string | null
+          gate_decision?: string | null
+          gradients?: Json
+          id?: string
+          model_used?: string | null
+          nudge_line?: string | null
+          operator_nudge?: Json | null
+          trigger?: string
+          user_id?: string
+          variants?: Json
+        }
+        Relationships: []
+      }
       mcp_eigenstates: {
         Row: {
           category: string

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { formatEmojiFieldLine, EMOJI_FIELD_LEGEND } from "./emoji-prosody.ts";
+import { runJacobian, JACOBIAN_LEGEND, type JacobianResult } from "./jacobian.ts";
 
 // Feature flag: emoji-prosodi som ENDA fältinjektion till huvudmodellen.
 // När på: en rad istället för 4 textblock. Lambda/Gate/Prospective signaleras
@@ -2173,6 +2174,11 @@ function createChatStream(
         let prmInjection = "";
         let gateInjection = "";
         let prospectiveInjection = "";
+        // Hoistade refs för Jacobian-workspace (behöver läsas efter if-blocket)
+        let jacSignalRef: any = null;
+        let jacGateRef: any = null;
+        let jacLambdaRef: any = null;
+        let jacProspectiveRef: any = null;
         if (userTurnText.trim().length > 0) {
           // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
@@ -2310,6 +2316,12 @@ function createChatStream(
             prospectiveInjection = "";
             gateInjection = "";
           }
+
+          // Exportera refs till outer scope för Jacobian-workspace
+          jacSignalRef = signal;
+          jacGateRef = gateResult;
+          jacLambdaRef = lambdaNextRef;
+          jacProspectiveRef = prospectiveSignal;
         }
         // ───────────────────────────────────────────────────
 
@@ -2345,7 +2357,67 @@ function createChatStream(
 
         const spineInjection = episodicSpine ? "\n\n" + episodicSpine : "";
         const dreamInjection = dreamResidue ? "\n\n" + dreamResidue : "";
-        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + dreamInjection + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
+
+        // ─── JACOBIAN-WORKSPACE (villkorlig) ───────────────
+        // Kör bara vid gate=kris | f_z>=0.6 | fork contracting/threshold.
+        // Räknar känslighetsmatris (operator × epistemik) mot ramval + mål.
+        let jacobianInjection = "";
+        const jacApiKey = Deno.env.get("LOVABLE_API_KEY");
+        if (userTurnText.trim().length > 0 && jacApiKey) {
+          try {
+            const jac: JacobianResult | null = await runJacobian(
+              {
+                userTurnText,
+                prevAssistantText,
+                dominantOperator: jacGateRef?.dominant_operator ?? null,
+                operatorTrace: jacGateRef?.operator_trace ?? null,
+                prmValence: jacSignalRef?.valence ?? null,
+                prmPattern: jacSignalRef?.dominant_pattern ?? null,
+                spineDigest: episodicSpine ?? null,
+              },
+              {
+                gate_decision: jacGateRef?.gate_decision ?? null,
+                f_z: jacLambdaRef?.f_z ?? null,
+                fork_type: jacProspectiveRef?.fork_type ?? null,
+                momentum_direction: jacProspectiveRef?.momentum_direction ?? null,
+              },
+              jacApiKey,
+            );
+            if (jac?.triggered && jac.nudge_line) {
+              jacobianInjection = "\n\n" + JACOBIAN_LEGEND + "\n" + jac.nudge_line;
+              controller.enqueue(sseJson({
+                jacobian_meta: {
+                  triggered: true,
+                  reason: jac.reason,
+                  chosen_index: jac.chosen_index,
+                  duration_ms: jac.duration_ms,
+                },
+              }));
+              // Fire-and-forget persist
+              supabase.from("jacobian_analyses").insert({
+                user_id: userId,
+                conversation_id: conversationId ?? null,
+                trigger: jac.reason,
+                gate_decision: jacGateRef?.gate_decision ?? null,
+                f_z: jacLambdaRef?.f_z ?? null,
+                fork_type: jacProspectiveRef?.fork_type ?? null,
+                variants: jac.variants,
+                gradients: jac.gradients,
+                chosen_variant_index: jac.chosen_index,
+                operator_nudge: { text: jac.operator_nudge },
+                epistemic_nudge: jac.epistemic_nudge,
+                nudge_line: jac.nudge_line,
+                duration_ms: jac.duration_ms,
+                model_used: "google/gemini-2.5-flash-lite",
+              }).then(({ error }) => { if (error) console.warn("[jacobian] persist:", error.message); });
+            }
+          } catch (e) {
+            console.warn("[jacobian] hook failed:", e instanceof Error ? e.message : e);
+          }
+        }
+        // ───────────────────────────────────────────────────
+
+        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + dreamInjection + prmInjection + prospectiveInjection + gateInjection + jacobianInjection + partiturInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
