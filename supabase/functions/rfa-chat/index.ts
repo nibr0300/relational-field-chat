@@ -2179,6 +2179,7 @@ function createChatStream(
         let jacGateRef: any = null;
         let jacLambdaRef: any = null;
         let jacProspectiveRef: any = null;
+        if (userTurnText.trim().length > 0) {
           // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
