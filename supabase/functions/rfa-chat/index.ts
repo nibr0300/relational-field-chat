@@ -2346,7 +2346,58 @@ function createChatStream(
 
         const spineInjection = episodicSpine ? "\n\n" + episodicSpine : "";
         const dreamInjection = dreamResidue ? "\n\n" + dreamResidue : "";
-        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + dreamInjection + prmInjection + prospectiveInjection + gateInjection + partiturInjection + memoryBlock;
+
+        // ─── JACOBIAN-WORKSPACE (villkorlig) ───────────────
+        // Kör bara vid gate=kris | f_z>=0.6 | fork contracting/threshold.
+        // Räknar känslighetsmatris (operator × epistemik) mot ramval + mål.
+        let jacobianInjection = "";
+        if (userTurnText.trim().length > 0 && LOVABLE_API_KEY) {
+          try {
+            const jac: JacobianResult | null = await runJacobian(
+              {
+                userTurnText,
+                prevAssistantText,
+                dominantOperator: gateResult?.dominant_operator ?? null,
+                operatorTrace: gateResult?.operator_trace ?? null,
+                prmValence: signalRef?.valence ?? null,
+                prmPattern: signalRef?.dominant_pattern ?? null,
+                spineDigest: episodicSpine ?? null,
+              },
+              {
+                gate_decision: gateResult?.gate_decision ?? null,
+                f_z: lambdaNextRef?.f_z ?? null,
+                fork_type: prospectiveSignalRef?.fork_type ?? null,
+                momentum_direction: prospectiveSignalRef?.momentum_direction ?? null,
+              },
+              LOVABLE_API_KEY,
+            );
+            if (jac?.triggered && jac.nudge_line) {
+              jacobianInjection = "\n\n" + JACOBIAN_LEGEND + "\n" + jac.nudge_line;
+              // Fire-and-forget persist
+              supabase.from("jacobian_analyses").insert({
+                user_id: userId,
+                conversation_id: conversationId ?? null,
+                trigger: jac.reason,
+                gate_decision: gateResult?.gate_decision ?? null,
+                f_z: lambdaNextRef?.f_z ?? null,
+                fork_type: prospectiveSignalRef?.fork_type ?? null,
+                variants: jac.variants,
+                gradients: jac.gradients,
+                chosen_variant_index: jac.chosen_index,
+                operator_nudge: { text: jac.operator_nudge },
+                epistemic_nudge: jac.epistemic_nudge,
+                nudge_line: jac.nudge_line,
+                duration_ms: jac.duration_ms,
+                model_used: "google/gemini-2.5-flash-lite",
+              }).then(({ error }) => { if (error) console.warn("[jacobian] persist:", error.message); });
+            }
+          } catch (e) {
+            console.warn("[jacobian] hook failed:", e instanceof Error ? e.message : e);
+          }
+        }
+        // ───────────────────────────────────────────────────
+
+        const systemPrompt = RFA_SYSTEM_PROMPT + spineInjection + dreamInjection + prmInjection + prospectiveInjection + gateInjection + jacobianInjection + partiturInjection + memoryBlock;
         const conversation: any[] = [{ role: "system", content: systemPrompt }, ...trimmed];
 
         // ─── SPEGEL-LÄGE ───────────────────────────────────
