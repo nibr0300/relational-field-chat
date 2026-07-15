@@ -2316,6 +2316,12 @@ function createChatStream(
             prospectiveInjection = "";
             gateInjection = "";
           }
+
+          // Exportera refs till outer scope för Jacobian-workspace
+          jacSignalRef = signal;
+          jacGateRef = gateResult;
+          jacLambdaRef = lambdaNextRef;
+          jacProspectiveRef = prospectiveSignal;
         }
         // ───────────────────────────────────────────────────
 
