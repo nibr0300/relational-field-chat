@@ -2174,7 +2174,11 @@ function createChatStream(
         let prmInjection = "";
         let gateInjection = "";
         let prospectiveInjection = "";
-        if (userTurnText.trim().length > 0) {
+        // Hoistade refs för Jacobian-workspace (behöver läsas efter if-blocket)
+        let jacSignalRef: any = null;
+        let jacGateRef: any = null;
+        let jacLambdaRef: any = null;
+        let jacProspectiveRef: any = null;
           // PRM + MSC-gate parallellt
           const memorySnippetForGate = memoryBlock.slice(0, 2000);
           const [prmResult, gateResult] = await Promise.all([
