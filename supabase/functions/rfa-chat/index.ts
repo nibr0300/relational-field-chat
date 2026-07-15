@@ -2362,36 +2362,45 @@ function createChatStream(
         // Kör bara vid gate=kris | f_z>=0.6 | fork contracting/threshold.
         // Räknar känslighetsmatris (operator × epistemik) mot ramval + mål.
         let jacobianInjection = "";
-        if (userTurnText.trim().length > 0 && LOVABLE_API_KEY) {
+        const jacApiKey = Deno.env.get("LOVABLE_API_KEY");
+        if (userTurnText.trim().length > 0 && jacApiKey) {
           try {
             const jac: JacobianResult | null = await runJacobian(
               {
                 userTurnText,
                 prevAssistantText,
-                dominantOperator: gateResult?.dominant_operator ?? null,
-                operatorTrace: gateResult?.operator_trace ?? null,
-                prmValence: signalRef?.valence ?? null,
-                prmPattern: signalRef?.dominant_pattern ?? null,
+                dominantOperator: jacGateRef?.dominant_operator ?? null,
+                operatorTrace: jacGateRef?.operator_trace ?? null,
+                prmValence: jacSignalRef?.valence ?? null,
+                prmPattern: jacSignalRef?.dominant_pattern ?? null,
                 spineDigest: episodicSpine ?? null,
               },
               {
-                gate_decision: gateResult?.gate_decision ?? null,
-                f_z: lambdaNextRef?.f_z ?? null,
-                fork_type: prospectiveSignalRef?.fork_type ?? null,
-                momentum_direction: prospectiveSignalRef?.momentum_direction ?? null,
+                gate_decision: jacGateRef?.gate_decision ?? null,
+                f_z: jacLambdaRef?.f_z ?? null,
+                fork_type: jacProspectiveRef?.fork_type ?? null,
+                momentum_direction: jacProspectiveRef?.momentum_direction ?? null,
               },
-              LOVABLE_API_KEY,
+              jacApiKey,
             );
             if (jac?.triggered && jac.nudge_line) {
               jacobianInjection = "\n\n" + JACOBIAN_LEGEND + "\n" + jac.nudge_line;
+              controller.enqueue(sseJson({
+                jacobian_meta: {
+                  triggered: true,
+                  reason: jac.reason,
+                  chosen_index: jac.chosen_index,
+                  duration_ms: jac.duration_ms,
+                },
+              }));
               // Fire-and-forget persist
               supabase.from("jacobian_analyses").insert({
                 user_id: userId,
                 conversation_id: conversationId ?? null,
                 trigger: jac.reason,
-                gate_decision: gateResult?.gate_decision ?? null,
-                f_z: lambdaNextRef?.f_z ?? null,
-                fork_type: prospectiveSignalRef?.fork_type ?? null,
+                gate_decision: jacGateRef?.gate_decision ?? null,
+                f_z: jacLambdaRef?.f_z ?? null,
+                fork_type: jacProspectiveRef?.fork_type ?? null,
                 variants: jac.variants,
                 gradients: jac.gradients,
                 chosen_variant_index: jac.chosen_index,
