@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { formatEmojiFieldLine, EMOJI_FIELD_LEGEND } from "./emoji-prosody.ts";
+import { runJacobian, JACOBIAN_LEGEND, type JacobianResult } from "./jacobian.ts";
 
 // Feature flag: emoji-prosodi som ENDA fältinjektion till huvudmodellen.
 // När på: en rad istället för 4 textblock. Lambda/Gate/Prospective signaleras
